@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/* AERUX theme tokens */
+:root {
+  /* palette */
+  --background: #ffffff; /* pure white */
+  --foreground: #0A1448; /* navy text */
+
+  --aerux-navy: #0A1448; /* primary */
+  --aerux-blue: #243B8A; /* legacy secondary-dark */
+  --aerux-accent: #0074D9; /* secondary */
+  --aerux-bg: #F5F7FF;
+  --aerux-white: #ffffff;
+  --text-secondary: #5A5F73;
+
+  /* radius */
+  --radius: 1rem; /* rounded-2xl */
+}
+
+@theme inline {
+  /* colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--aerux-navy);
+  --color-secondary: var(--aerux-accent);
+  --color-text-secondary: var(--text-secondary);
+  --color-card: var(--aerux-white);
+
+  /* fonts */
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-poppins);
+
+  /* radius */
+  --radius-2xl: var(--radius);
+}
+
+/* Disable automatic dark-mode color swap; theme is controlled via class toggle */
+
+/* Base styles */
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-weight: 400;
+}
+
+/* Heading font and weights */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+  font-weight: 700;
+  color: var(--aerux-navy);
+}
+
+/* Secondary text utility */
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+/* Utility: AERUX gradient backgrounds */
+@utility aerux-gradient-primary {
+  background-image: linear-gradient(135deg, var(--aerux-navy), var(--aerux-blue));
+}
+
+@utility aerux-gradient-accent {
+  background-image: linear-gradient(135deg, var(--aerux-accent), #4db8ff);
+}
+
+/* Utility: soft card */
+@utility aerux-card {
+  background-color: var(--aerux-white);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 25px rgba(10, 20, 72, 0.08);
+}
+
+/* Utility: soft shadow */
+@utility aerux-shadow {
+  box-shadow: 0 8px 24px rgba(10, 20, 72, 0.12);
+}
