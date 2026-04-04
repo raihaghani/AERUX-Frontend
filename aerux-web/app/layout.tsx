@@ -35,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`light ${inter.variable} ${poppins.variable}`}>
-      <body className="min-h-screen bg-background text-foreground">
+      <body className="min-h-screen bg-background text-foreground" suppressHydrationWarning>
         <QueryProvider>
           <div className="relative min-h-screen">
             <Navbar />

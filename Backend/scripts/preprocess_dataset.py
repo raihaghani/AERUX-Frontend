@@ -1,10 +1,14 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Standalone Preprocessing Script for Intracranial Aneurysm Dataset
 
 This script:
 1. Loads DICOM files from the series directory
 2. Filters out error series from error_data.yaml
-3. Uses the selected 2000 series dataset
+3. Loads series from train.csv (full competition CSV)
 4. Applies modality-specific preprocessing (N4, HU windowing, Sato vesselness, etc.)
 5. Converts to 2.5D representation (7 slices)
 6. Saves preprocessed volumes as .npy files
@@ -36,11 +40,11 @@ warnings.filterwarnings('ignore')
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from config.config import Config
+from src.config.config import Config
 
 # Try to import preprocessing module
 try:
-    from data.preprocessing import create_preprocessor
+    from src.datasets.preprocessing import create_preprocessor
     PREPROCESSING_AVAILABLE = True
 except ImportError:
     print("Warning: Preprocessing module not available. Install: pip install SimpleITK scikit-image")
@@ -450,49 +454,18 @@ def main():
     localizer_dict = load_localizer_data(config.data.train_localizers_csv)
     print(f"Loaded slice locations for {len(localizer_dict)} series with aneurysms")
     
-    # Check if we need to create the selected dataset first
-    if config.data.use_selected_dataset:
-        if not os.path.exists(config.data.selected_dataset_csv):
-            print(f"\n Selected dataset file not found: {config.data.selected_dataset_csv}")
-            print("Creating selected dataset of 2000 series...")
-            print("=" * 80)
-            
-            # Import and run dataset selection
-            try:
-                from data.select_dataset import select_balanced_dataset
-                
-                # Create output directory
-                os.makedirs(os.path.dirname(config.data.selected_dataset_csv), exist_ok=True)
-                
-                selected_df = select_balanced_dataset(
-                    train_csv_path=config.data.train_csv,
-                    error_yaml_path=config.data.error_data_yaml,
-                    output_csv_path=config.data.selected_dataset_csv,
-                    random_seed=config.data.random_seed
-                )
-                df = selected_df
-                print(" Selected dataset created successfully")
-            except Exception as e:
-                logger.error(f"Failed to create selected dataset: {e}")
-                print(f" Error creating selected dataset. Please run: python data/select_dataset.py")
-                return
-        else:
-            print(f"\nLoading selected dataset from: {config.data.selected_dataset_csv}")
-            df = pd.read_csv(config.data.selected_dataset_csv)
-            print(f" Selected series count: {len(df)}")
-    else:
-        print(f"\nLoading full dataset from: {config.data.train_csv}")
-        df = pd.read_csv(config.data.train_csv)
-        print(f"Total series count: {len(df)}")
-        
-        # Filter error series
-        if os.path.exists(config.data.error_data_yaml):
-            error_series = load_error_series_ids(config.data.error_data_yaml)
-            if error_series:
-                original_count = len(df)
-                df = df[~df['SeriesInstanceUID'].isin(error_series)]
-                print(f"Filtered out {original_count - len(df)} error series")
-                print(f"Remaining series: {len(df)}")
+    print(f"\nLoading full dataset from: {config.data.train_csv}")
+    df = pd.read_csv(config.data.train_csv)
+    print(f"Total series count: {len(df)}")
+
+    # Filter error series
+    if os.path.exists(config.data.error_data_yaml):
+        error_series = load_error_series_ids(config.data.error_data_yaml)
+        if error_series:
+            original_count = len(df)
+            df = df[~df['SeriesInstanceUID'].isin(error_series)]
+            print(f"Filtered out {original_count - len(df)} error series")
+            print(f"Remaining series: {len(df)}")
     
     # Normalize modality names
     df['Modality_Normalized'] = df['Modality'].apply(normalize_modality)

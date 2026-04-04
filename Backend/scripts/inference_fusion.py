@@ -1,10 +1,14 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Inference Script for Fused Multi-Modal Model
 
 This script loads the trained fusion model and generates predictions on test/inference data.
 
 Usage:
-    # Inference on test split from selected dataset
+    # Inference on default evaluation split (global test if use_global_split, else legacy fusion test)
     python inference_fusion.py --fusion_model path/to/best_fusion_model.pth
     
     # Inference on custom CSV
@@ -28,7 +32,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config.config import Config
+from src.config.config import Config
 from train_multitask import MultiTaskResNet50, LOCATION_LABELS
 from train_fusion import SimpleFusionModel, MultiModalDataset, multimodal_collate_fn
 
@@ -197,28 +201,10 @@ def main():
         df = pd.read_csv(args.input_csv)
         print(f"Loaded {len(df)} samples from {args.input_csv}")
     else:
-        # Use test split from selected dataset
-        aerux_base = os.path.dirname(config.data.preprocessed_cta_dir).replace('Preprocessed_images_2.5D', '').rstrip(os.sep)
-        selected_dataset_path = os.path.join(aerux_base, 'data_splits', 'selected_dataset_2000.csv')
-        
-        if not os.path.exists(selected_dataset_path):
-            print(f"ERROR: Selected dataset not found at {selected_dataset_path}")
-            return
-        
-        full_df = pd.read_csv(selected_dataset_path)
-        
-        # Create test split (same as training)
-        from sklearn.model_selection import train_test_split
-        train_df, temp_df = train_test_split(
-            full_df, test_size=0.3, random_state=config.data.random_seed,
-            stratify=full_df['Aneurysm Present']
-        )
-        _, df = train_test_split(
-            temp_df, test_size=0.5, random_state=config.data.random_seed,
-            stratify=temp_df['Aneurysm Present']
-        )
-        
-        print(f"Using test split: {len(df)} samples")
+        from src.datasets.global_split_utils import load_evaluation_test_dataframe
+
+        df = load_evaluation_test_dataframe(config)
+        print(f"Using evaluation test split: {len(df)} samples")
         print(f"  Aneurysm present: {df['Aneurysm Present'].sum()}")
         print(f"  No aneurysm: {len(df) - df['Aneurysm Present'].sum()}")
     
@@ -230,9 +216,10 @@ def main():
     }
     
     # Create dataset
+    train_csv_for_labels = args.input_csv if args.input_csv else config.data.train_csv
     inference_dataset = MultiModalDataset(
-        df, base_dirs, 
-        train_csv_path=args.input_csv if args.input_csv else selected_dataset_path,
+        df, base_dirs,
+        train_csv_path=train_csv_for_labels,
         segmentation_dir=None,
         augment=False
     )

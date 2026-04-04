@@ -1,20 +1,30 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Diagnostic script to check segmentation masks and location labels
 """
 
 import os
+import sys
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from src.config.config import Config
 
 print("=" * 80)
 print("DATA DIAGNOSTICS FOR FUSION TRAINING")
 print("=" * 80)
 
-# 1. Check selected dataset
-dataset_path = "e:/Education/Aerux_Final/data_splits/selected_dataset_2000.csv"
+config = Config()
+dataset_path = config.data.train_csv
 df = pd.read_csv(dataset_path)
 
-print(f"\n1. SELECTED DATASET OVERVIEW")
+print(f"\n1. TRAIN CSV OVERVIEW ({dataset_path})")
 print(f"   Total samples: {len(df)}")
 print(f"   Aneurysm cases: {df['Aneurysm Present'].sum()}")
 print(f"   No aneurysm cases: {len(df) - df['Aneurysm Present'].sum()}")

@@ -1,27 +1,85 @@
 "use client";
 
-import { useRef, useState, DragEvent } from "react";
-import { motion } from "framer-motion";
-import { fadeUp, fadeUpTransition } from "@/components/motion/presets";
-import { Upload } from "lucide-react";
+import { useRef, useState, useEffect, useCallback, DragEvent } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { fadeUp } from "@/components/motion/presets";
+import {
+  Upload,
+  FileImage,
+  Layers,
+  CheckCircle2,
+  Loader2,
+  Circle,
+  FileType2,
+  Clock,
+} from "lucide-react";
 import { useUIStore } from "@/store/ui";
 import { useRouter } from "next/navigation";
+
+type ScanMode = "single" | "series";
+type ProcessingStage =
+  | null
+  | "uploading"
+  | "detecting"
+  | "analyzing"
+  | "results";
+
+const PIPELINE_STEPS = [
+  { key: "uploading", label: "Uploading file" },
+  { key: "detecting", label: "Detecting modality" },
+  { key: "analyzing", label: "Analyzing scan" },
+  { key: "results", label: "Generating results" },
+] as const;
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
 
 export default function UploadPage() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  
+  const [scanMode, setScanMode] = useState<ScanMode>("single");
+  const [step, setStep] = useState(3);
+  const [fastMode, setFastMode] = useState(false);
+
   const uploadProgress = useUIStore((s) => s.uploadProgress);
   const setUploadProgress = useUIStore((s) => s.setUploadProgress);
   const selectedFileName = useUIStore((s) => s.selectedFileName);
   const setSelectedFileName = useUIStore((s) => s.setSelectedFileName);
   const setSelectedModality = useUIStore((s) => s.setSelectedModality);
   const setPredictionResult = useUIStore((s) => s.setPredictionResult);
+  const setSeriesResult = useUIStore((s) => s.setSeriesResult);
+  const predictionError = useUIStore((s) => s.predictionError);
   const setPredictionError = useUIStore((s) => s.setPredictionError);
-  const setLoading = useUIStore((s) => s.setLoading);
-  
-  const [modality, setModality] = useState<"CTA" | "MRA" | "MRI">("CTA");
+
+  const [stage, setStage] = useState<ProcessingStage>(null);
+  const [fileSize, setFileSize] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!stage) {
+      setElapsed(0);
+      return;
+    }
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, [stage]);
+
+  const resetProcessing = useCallback(() => {
+    setStage(null);
+    setElapsed(0);
+    setUploadProgress(0);
+  }, [setUploadProgress]);
 
   const onBrowse = () => inputRef.current?.click();
 
@@ -29,7 +87,13 @@ export default function UploadPage() {
     if (!files || files.length === 0) return;
     const file = files[0];
     setSelectedFileName(file.name);
-    uploadFile(file);
+    setFileSize(file.size);
+
+    if (scanMode === "series") {
+      uploadSeries(file);
+    } else {
+      uploadFile(file);
+    }
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -54,10 +118,11 @@ export default function UploadPage() {
   function uploadFile(file: File) {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("modality", modality);
 
-    setSelectedModality(modality);
     setPredictionError(null);
+    setPredictionResult(null);
+    setSeriesResult(null);
+    setStage("uploading");
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload");
@@ -68,116 +133,392 @@ export default function UploadPage() {
       }
     };
 
-    xhr.onloadstart = () => setLoading(true);
+    xhr.upload.onload = () => {
+      setUploadProgress(100);
+      setStage("detecting");
+      setTimeout(() => setStage("analyzing"), 1200);
+    };
 
     xhr.onload = () => {
-      setUploadProgress(100);
+      setStage("results");
       try {
         const res = JSON.parse(xhr.responseText || "{}");
         if (res.ok) {
+          if (res.detected_modality) setSelectedModality(res.detected_modality);
           setPredictionResult(res);
-          setLoading(false);
-          router.push("/visuals");
+          setTimeout(() => {
+            resetProcessing();
+            router.push("/visuals");
+          }, 600);
         } else {
           setPredictionError(res.error ?? "Inference failed");
-          setLoading(false);
+          resetProcessing();
         }
       } catch {
         setPredictionError("Failed to parse response");
-        setLoading(false);
+        resetProcessing();
       }
-      setTimeout(() => setUploadProgress(0), 800);
     };
 
     xhr.onerror = () => {
       setPredictionError("Network error during upload");
-      setLoading(false);
+      resetProcessing();
     };
 
     xhr.send(formData);
   }
 
+  function uploadSeries(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("step", String(step));
+    if (fastMode) formData.append("fast_mode", "true");
+
+    setPredictionError(null);
+    setPredictionResult(null);
+    setSeriesResult(null);
+    setStage("uploading");
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload-series");
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.upload.onload = () => {
+      setUploadProgress(100);
+      setStage("detecting");
+      setTimeout(() => setStage("analyzing"), 1500);
+    };
+
+    xhr.onload = () => {
+      setStage("results");
+      try {
+        const res = JSON.parse(xhr.responseText || "{}");
+        if (res.ok) {
+          if (res.detected_modality) setSelectedModality(res.detected_modality);
+          setSeriesResult(res);
+          setTimeout(() => {
+            resetProcessing();
+            router.push("/visuals");
+          }, 600);
+        } else {
+          setPredictionError(res.error ?? "Series scan failed");
+          resetProcessing();
+        }
+      } catch {
+        setPredictionError("Failed to parse response");
+        resetProcessing();
+      }
+    };
+
+    xhr.onerror = () => {
+      setPredictionError("Network error during upload");
+      resetProcessing();
+    };
+
+    xhr.send(formData);
+  }
+
+  const acceptFilter =
+    scanMode === "series"
+      ? ".zip"
+      : ".npy,.zip,.dcm,.nii,.nii.gz,.png,.jpg,.jpeg";
+
+  const isProcessing = stage !== null;
+
   return (
     <main className="relative mx-auto w-full max-w-4xl px-6 py-14">
       <h1 className="text-3xl font-bold tracking-tight">Upload Scan</h1>
       <p className="mt-2 text-zinc-700">
-        Formats supported: DICOM (.dcm), NIfTI (.nii, .nii.gz), PNG
+        Analyze a single image or scan a full DICOM series for aneurysm
+        detection.
       </p>
 
-      <motion.div
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        initial={fadeUp.initial}
-        whileInView={fadeUp.animate}
-        viewport={{ once: true, amount: 0.2 }}
-        transition={fadeUpTransition(0)}
-        animate={{ scale: isDragging ? 1.02 : 1 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="mt-8 rounded-2xl bg-white p-8 ring-1 ring-black/10 shadow-sm"
-        style={{ boxShadow: isDragging ? "0 0 0 3px rgba(0,116,217,0.3)" : undefined }}
-      >
-        <div className="flex flex-col items-center justify-center text-center">
-          <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white ring-1 ring-[color:var(--aerux-navy)] text-[color:var(--aerux-navy)] shadow-sm">
-            <Upload className="h-7 w-7" />
-          </span>
-          <p className="mt-4 text-lg font-medium text-[color:var(--aerux-navy)]">Drop or select medical image</p>
-          <p className="mt-1 text-sm text-zinc-600 mb-6">
-            DICOM (.dcm), NIfTI (.nii, .nii.gz), PNG
-          </p>
-
-          <div className="flex flex-col items-center gap-4">
-            <select
-              value={modality}
-              onChange={(e) => setModality(e.target.value as "CTA" | "MRA" | "MRI")}
-              className="rounded-xl border px-3 py-2 text-sm font-medium text-[color:var(--aerux-navy)] outline-none focus:ring-2 focus:ring-[color:var(--aerux-accent)] bg-white cursor-pointer"
-            >
-              <option value="CTA">CTA — CT Angiography</option>
-              <option value="MRA">MRA — MR Angiography</option>
-              <option value="MRI">MRI — Magnetic Resonance</option>
-            </select>
-
-            <div>
-              <button
-                type="button"
-                onClick={onBrowse}
-                className="inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--aerux-accent)] px-6 font-medium text-white shadow transition hover:brightness-105 transform hover:scale-[1.03]"
-              >
-                Select File
-              </button>
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".dcm,.nii,.nii.gz,.png"
-                onChange={(e) => handleFiles(e.target.files)}
-                className="hidden"
-              />
-            </div>
-          </div>
-
-          {selectedFileName && (
-            <div className="mt-8 w-full max-w-xl">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-[color:var(--aerux-navy)]">{selectedFileName}</span>
-                <span className="text-zinc-600">{uploadProgress}%</span>
-              </div>
-              <div className="mt-2 h-2 w-full rounded-full bg-zinc-200">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${uploadProgress}%` }}
-                  className="h-2 rounded-full bg-[color:var(--aerux-accent)]"
-                />
-              </div>
-            </div>
-          )}
-          
-          {useUIStore((s) => s.predictionError) && (
-            <div className="mt-4 text-sm text-red-500 font-medium">
-              Error: {useUIStore((s) => s.predictionError)}
-            </div>
-          )}
+      {/* Mode toggle */}
+      {!isProcessing && (
+        <div className="mt-6 inline-flex rounded-xl bg-zinc-100 p-1 ring-1 ring-black/5">
+          <button
+            type="button"
+            onClick={() => setScanMode("single")}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              scanMode === "single"
+                ? "bg-white text-[color:var(--aerux-navy)] shadow-sm"
+                : "text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            <FileImage className="h-4 w-4" /> Single Image
+          </button>
+          <button
+            type="button"
+            onClick={() => setScanMode("series")}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              scanMode === "series"
+                ? "bg-white text-[color:var(--aerux-navy)] shadow-sm"
+                : "text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            <Layers className="h-4 w-4" /> Series Scan
+          </button>
         </div>
-      </motion.div>
+      )}
+
+      <AnimatePresence mode="wait">
+        {isProcessing ? (
+          <motion.div
+            key="processing"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.35 }}
+            className="mt-6 rounded-2xl bg-white p-8 ring-1 ring-black/10 shadow-sm"
+          >
+            <ProcessingCard
+              fileName={selectedFileName}
+              fileSize={fileSize}
+              stage={stage}
+              uploadProgress={uploadProgress}
+              elapsed={elapsed}
+              isSeries={scanMode === "series"}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="upload"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.35 }}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            className="mt-6 rounded-2xl bg-white p-8 ring-1 ring-black/10 shadow-sm"
+            style={{
+              boxShadow: isDragging
+                ? "0 0 0 3px rgba(0,116,217,0.3)"
+                : undefined,
+            }}
+          >
+            <div className="flex flex-col items-center justify-center text-center">
+              <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white ring-1 ring-[color:var(--aerux-navy)] text-[color:var(--aerux-navy)] shadow-sm">
+                <Upload className="h-7 w-7" />
+              </span>
+
+              {scanMode === "single" ? (
+                <>
+                  <p className="mt-4 text-lg font-medium text-[color:var(--aerux-navy)]">
+                    Drop or select a medical image
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 mb-3">
+                    Preprocessed (.npy) · DICOM series (.zip) · Single image
+                    (.dcm, .nii, .png, .jpg)
+                  </p>
+                  <p className="mb-4 max-w-lg rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+                    <strong>Tip:</strong> Preprocessed .npy or a full DICOM
+                    series (.zip) give the most accurate results. Single 2D
+                    images (.dcm, .png) lack the multi-slice depth context the
+                    model was trained on.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-4 text-lg font-medium text-[color:var(--aerux-navy)]">
+                    Drop or select a DICOM series archive
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600 mb-6">
+                    Upload a .zip containing DICOM (.dcm) files for a full
+                    sliding-window scan
+                  </p>
+                </>
+              )}
+
+              <div className="flex flex-col items-center gap-4">
+                {scanMode === "series" && (
+                  <div className="flex flex-wrap items-center justify-center gap-4">
+                    <label className="flex items-center gap-2 text-sm text-zinc-700">
+                      <span className="font-medium">Step:</span>
+                      <select
+                        value={step}
+                        onChange={(e) => setStep(Number(e.target.value))}
+                        title="Select window step size"
+                        className="rounded-lg border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-[color:var(--aerux-accent)] bg-white cursor-pointer"
+                      >
+                        <option value={1}>1 (every slice)</option>
+                        <option value={2}>2</option>
+                        <option value={3}>3 (balanced)</option>
+                        <option value={5}>5 (fast)</option>
+                      </select>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={fastMode}
+                        onChange={(e) => setFastMode(e.target.checked)}
+                        className="h-4 w-4 rounded border-zinc-300 text-[color:var(--aerux-accent)] focus:ring-[color:var(--aerux-accent)]"
+                      />
+                      <span>
+                        Fast mode{" "}
+                        <span className="text-xs text-zinc-500">
+                          (skip N4 correction)
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={onBrowse}
+                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--aerux-accent)] px-6 font-medium text-white shadow transition hover:brightness-105 transform hover:scale-[1.03]"
+                  >
+                    Select File
+                  </button>
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept={acceptFilter}
+                    title="Choose a file to upload"
+                    onChange={(e) => handleFiles(e.target.files)}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              {predictionError && (
+                <div className="mt-4 text-sm text-red-500 font-medium">
+                  Error: {predictionError}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
+}
+
+/* ─── Processing card ─────────────────────────────────────────────────────── */
+
+function ProcessingCard({
+  fileName,
+  fileSize,
+  stage,
+  uploadProgress,
+  elapsed,
+  isSeries,
+}: {
+  fileName: string | null;
+  fileSize: number;
+  stage: ProcessingStage;
+  uploadProgress: number;
+  elapsed: number;
+  isSeries: boolean;
+}) {
+  const stageIdx = PIPELINE_STEPS.findIndex((s) => s.key === stage);
+
+  return (
+    <div className="flex flex-col items-center gap-8">
+      {/* File info */}
+      <div className="flex items-center gap-3 rounded-xl bg-zinc-50 px-5 py-3 ring-1 ring-black/5">
+        <FileType2 className="h-8 w-8 text-[color:var(--aerux-navy)] shrink-0" />
+        <div className="text-left min-w-0">
+          <p className="text-sm font-semibold text-[color:var(--aerux-navy)] truncate max-w-[280px]">
+            {fileName ?? "file"}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {formatBytes(fileSize)} · {isSeries ? "Series Scan" : "Single Image"}
+          </p>
+        </div>
+      </div>
+
+      {/* Upload progress (only during upload stage) */}
+      {stage === "uploading" && (
+        <div className="w-full max-w-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-500 mb-1.5">
+            <span>Uploading...</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-zinc-200 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${uploadProgress}%` }}
+              transition={{ ease: "easeOut", duration: 0.3 }}
+              className="h-full rounded-full bg-[color:var(--aerux-accent)]"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline stepper */}
+      <div className="w-full max-w-md">
+        <div className="flex flex-col gap-0">
+          {PIPELINE_STEPS.map((s, i) => {
+            let status: "done" | "active" | "pending" = "pending";
+            if (i < stageIdx) status = "done";
+            else if (i === stageIdx) status = "active";
+
+            return (
+              <div key={s.key} className="flex items-center gap-3 py-2">
+                <StepIcon status={status} />
+                <span
+                  className={`text-sm font-medium transition-colors duration-300 ${
+                    status === "done"
+                      ? "text-emerald-600"
+                      : status === "active"
+                        ? "text-[color:var(--aerux-navy)]"
+                        : "text-zinc-400"
+                  }`}
+                >
+                  {s.label}
+                </span>
+                {status === "active" && (
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="ml-auto text-xs text-zinc-400"
+                  >
+                    {formatTime(elapsed)}
+                  </motion.span>
+                )}
+                {status === "done" && (
+                  <span className="ml-auto text-xs text-emerald-500">Done</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Elapsed timer */}
+      <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+        <Clock className="h-3.5 w-3.5" />
+        <span>Elapsed: {formatTime(elapsed)}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Step icon ───────────────────────────────────────────────────────────── */
+
+function StepIcon({ status }: { status: "done" | "active" | "pending" }) {
+  if (status === "done") {
+    return (
+      <motion.span
+        initial={{ scale: 0.5 }}
+        animate={{ scale: 1 }}
+        className="shrink-0"
+      >
+        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+      </motion.span>
+    );
+  }
+  if (status === "active") {
+    return <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[color:var(--aerux-accent)]" />;
+  }
+  return <Circle className="h-5 w-5 shrink-0 text-zinc-300" />;
 }

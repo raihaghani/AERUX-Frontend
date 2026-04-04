@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Preprocessing Comparison Visualization
 
@@ -26,7 +30,7 @@ from tqdm import tqdm
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config.config import Config
+from src.config.config import Config
 
 
 def load_original_dicom(series_uid, series_dir, aneurysm_sop_uid=None):

@@ -1,30 +1,32 @@
 // app/api/upload/route.ts
+
 export async function POST(req: Request) {
   try {
-    const form     = await req.formData();
-    const file     = form.get("file")     as File;
-    const modality = form.get("modality") as string;
-    const sigma    = form.get("sigma")    as string | null;
-    const alpha    = form.get("alpha")    as string | null;
+    const form      = await req.formData();
+    const file      = form.get("file")      as File;
+    const modality  = form.get("modality")  as string | null;
+    const sigma     = form.get("sigma")     as string | null;
+    const alpha     = form.get("alpha")     as string | null;
     const threshold = form.get("threshold") as string | null;
 
-    if (!file || !modality) {
+    if (!file) {
       return new Response(
-        JSON.stringify({ error: "file and modality are required" }),
+        JSON.stringify({ error: "file is required" }),
         { status: 400, headers: { "content-type": "application/json" } }
       );
     }
 
-    // Forward to FastAPI
     const fastForm = new FormData();
-    fastForm.append("file",     file);
-    fastForm.append("modality", modality);
+    fastForm.append("file", file);
+    if (modality)  fastForm.append("modality",  modality);
     if (sigma)     fastForm.append("sigma",     sigma);
     if (alpha)     fastForm.append("alpha",     alpha);
     if (threshold) fastForm.append("threshold", threshold);
 
+    const baseUrl = process.env.FASTAPI_BASE_URL ?? "http://localhost:8000";
+
     const fastRes = await fetch(
-      `${process.env.FASTAPI_BASE_URL}/predict`,
+      `${baseUrl}/predict`,
       { method: "POST", body: fastForm }
     );
 
@@ -51,9 +53,12 @@ export async function POST(req: Request) {
       { status: 200, headers: { "content-type": "application/json" } }
     );
 
-  } catch {
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Upload failed";
+    console.error("[api/upload] Error:", message);
     return new Response(
-      JSON.stringify({ error: "Upload failed" }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { "content-type": "application/json" } }
     );
   }

@@ -8,6 +8,27 @@ This repository holds the entire consolidated stack:
 
 ---
 
+## ⚡ TL;DR: Quickstart - How to Run Both Servers
+
+To run the application locally, you need to start **both** the backend and the frontend in two separate terminal windows.
+
+**Terminal 1 (Backend - FastAPI):**
+```bash
+cd Backend
+venv\Scripts\activate      # Or `source venv/bin/activate` on Mac/Linux
+uvicorn main:app --reload --port 8000
+```
+
+**Terminal 2 (Frontend - Next.js):**
+```bash
+cd aerux-web
+npm run dev
+```
+
+Finally, open your browser and navigate to **http://localhost:3000**
+
+---
+
 ## 🏗️ Architecture & Integration Flow
 
 The frontend and backend run as separate local servers that securely talk to each other server-to-server.

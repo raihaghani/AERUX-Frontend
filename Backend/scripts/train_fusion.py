@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Multi-Modal ATTENTION-BASED FUSION Training Script
 
@@ -11,10 +15,10 @@ WHAT IS ATTENTION-BASED FUSION?
 - Attention learns which aspects of each modality are most important
 
 TRAINING PROCESS:
-1. Load 3 pre-trained models (CTA trained on 1000 images, MRA on 500, MRI on 500)
+1. Load 3 pre-trained models (CTA, MRA, MRI)
 2. Freeze all model weights
 3. Add attention mechanism (query, key, value transformations)
-4. Train attention layers on combined dataset (2000 samples)
+4. Train attention layers on the complete dataset (all preprocessed samples)
 5. Each sample's features are weighted by learned attention scores
 
 ADVANTAGES:
@@ -66,7 +70,7 @@ sns.set_style('whitegrid')
 plt.rcParams['figure.figsize'] = (12, 8)
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config.config import Config
+from src.config.config import Config
 from train_multitask import MultiTaskResNet50, MultiTaskLoss, compute_weighted_auc, LOCATION_LABELS
 
 
@@ -730,7 +734,7 @@ def train_fusion_model(config, checkpoint_paths, num_epochs=30, batch_size=4, le
     
     # Create output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(config.data.output_root, f"fusion_{timestamp}_final_experiment")
+    output_dir = os.path.join(config.data.output_root, f"fusion_Resnet_{timestamp}_most_final_experiment")
     os.makedirs(output_dir, exist_ok=True)
     
     print(f"\nOutput directory: {output_dir}")
@@ -760,34 +764,27 @@ def train_fusion_model(config, checkpoint_paths, num_epochs=30, batch_size=4, le
     trainable_params = sum(p.numel() for p in fusion_model.parameters() if p.requires_grad)
     print(f"Trainable fusion parameters: {trainable_params:,}")
     
-    # Prepare dataset - Use selected dataset instead of full train.csv
+    # Prepare dataset (global train / val when use_global_split — see create_global_split.py)
     print("\nPreparing dataset...")
-    # Get the base directory from config (parent of preprocessed dirs)
-    aerux_base = os.path.dirname(config.data.preprocessed_cta_dir).replace('Preprocessed_images_2.5D', '').rstrip(os.sep)
-    selected_dataset_path = os.path.join(aerux_base, 'data_splits', 'selected_dataset_2000.csv')
-    
-    if not os.path.exists(selected_dataset_path):
-        print(f"ERROR: Selected dataset not found at {selected_dataset_path}")
-        print("Please ensure selected_dataset_2000.csv exists in data_splits folder")
+    train_csv_path = config.data.train_csv
+
+    if not os.path.exists(train_csv_path):
+        print(f"ERROR: train.csv not found at {train_csv_path}")
         return None, None
-    
-    df = pd.read_csv(selected_dataset_path)
-    print(f"Loaded selected dataset: {len(df)} samples")
-    print(f"  CTA: {len(df[df['Modality'] == 'CTA'])}")
-    print(f"  MRA: {len(df[df['Modality'] == 'MRA'])}")
-    print(f"  MRI: {len(df[df['Modality'].str.contains('MRI')])}")
-    
-    # Split data
-    from sklearn.model_selection import train_test_split
-    train_df, temp_df = train_test_split(df, test_size=0.3, random_state=config.data.random_seed,
-                                         stratify=df['Aneurysm Present'])
-    val_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=config.data.random_seed,
-                                       stratify=temp_df['Aneurysm Present'])
-    
-    print(f"\nData splits:")
-    print(f"  Train: {len(train_df)}")
-    print(f"  Val:   {len(val_df)}")
-    print(f"  Test:  {len(test_df)}")
+
+    from src.datasets.global_split_utils import load_fusion_training_dataframes
+
+    train_df, val_df, test_df, split_mode = load_fusion_training_dataframes(config, train_csv_path)
+
+    if split_mode == "global":
+        print(f"  CTA: {len(train_df[train_df['Modality'] == 'CTA']) + len(val_df[val_df['Modality'] == 'CTA'])} (train+val)")
+        print(f"  MRA: {len(train_df[train_df['Modality'] == 'MRA']) + len(val_df[val_df['Modality'] == 'MRA'])} (train+val)")
+        print(f"  MRI: {len(train_df[train_df['Modality'] == 'MRI']) + len(val_df[val_df['Modality'] == 'MRI'])} (train+val)")
+    else:
+        pool = pd.concat([train_df, val_df, test_df], ignore_index=True)
+        print(f"  CTA: {len(pool[pool['Modality'] == 'CTA'])}")
+        print(f"  MRA: {len(pool[pool['Modality'] == 'MRA'])}")
+        print(f"  MRI: {len(pool[pool['Modality'] == 'MRI'])}")
     
     # Base directories - use paths from config
     base_dirs = {
@@ -801,27 +798,29 @@ def train_fusion_model(config, checkpoint_paths, num_epochs=30, batch_size=4, le
         if not os.path.exists(dir_path):
             print(f"WARNING: Directory not found: {dir_path}")
     
-    # Create datasets - use selected dataset CSV which has all metadata
     # Use segmentation directory if available
     seg_dir = config.data.segmentation_masks_dir if hasattr(config.data, 'segmentation_masks_dir') else None
     if seg_dir and not os.path.exists(seg_dir):
         print(f"Warning: Segmentation directory not found: {seg_dir}")
         seg_dir = None
     
-    train_dataset = MultiModalDataset(train_df, base_dirs, selected_dataset_path,
+    train_dataset = MultiModalDataset(train_df, base_dirs, train_csv_path,
                                      segmentation_dir=seg_dir, augment=True)
-    val_dataset = MultiModalDataset(val_df, base_dirs, selected_dataset_path,
+    val_dataset = MultiModalDataset(val_df, base_dirs, train_csv_path,
                                    segmentation_dir=seg_dir, augment=False)
-    test_dataset = MultiModalDataset(test_df, base_dirs, selected_dataset_path,
-                                    segmentation_dir=seg_dir, augment=False)
+    test_dataset = None
+    test_loader = None
+    if test_df is not None:
+        test_dataset = MultiModalDataset(test_df, base_dirs, train_csv_path,
+                                        segmentation_dir=seg_dir, augment=False)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                                num_workers=2, pin_memory=True, collate_fn=multimodal_collate_fn)
     
     # Create dataloaders with custom collate function
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, 
                              num_workers=2, pin_memory=True, collate_fn=multimodal_collate_fn)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, 
                            num_workers=2, pin_memory=True, collate_fn=multimodal_collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
-                            num_workers=2, pin_memory=True, collate_fn=multimodal_collate_fn)
     
     # Loss and optimizer (only train fusion/calibration weights)
     # Increase localization weight to give more importance to location predictions
@@ -933,23 +932,30 @@ def train_fusion_model(config, checkpoint_paths, num_epochs=30, batch_size=4, le
             print(f"\nEarly stopping triggered after {epoch+1} epochs")
             break
     
-    # Test on best model
-    print("\n" + "=" * 80)
-    print("EVALUATING ON TEST SET")
-    print("=" * 80)
-    
-    checkpoint = torch.load(checkpoint_path, weights_only=False)
-    fusion_model.load_state_dict(checkpoint['model_state_dict'])
-    
-    test_metrics = validate(fusion_model, test_loader, criterion, device)
-    
-    print(f"\nTest Results:")
-    print(f"  Weighted AUC (Competition Metric): {test_metrics['weighted_auc']:.4f}")
-    print(f"  Detection AUC:     {test_metrics['detection_auc']:.4f}")
-    print(f"  Detection Acc:     {test_metrics['detection_accuracy']:.4f}")
-    print(f"  F1 Score:          {test_metrics['f1']:.4f}")
-    print(f"  Precision:         {test_metrics['precision']:.4f}")
-    print(f"  Recall:            {test_metrics['recall']:.4f}")
+    test_metrics = None
+    if test_loader is not None:
+        print("\n" + "=" * 80)
+        print("EVALUATING ON INTERNAL FUSION TEST SET (legacy split)")
+        print("=" * 80)
+
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        fusion_model.load_state_dict(checkpoint['model_state_dict'])
+
+        test_metrics = validate(fusion_model, test_loader, criterion, device)
+
+        print(f"\nTest Results:")
+        print(f"  Weighted AUC (Competition Metric): {test_metrics['weighted_auc']:.4f}")
+        print(f"  Detection AUC:     {test_metrics['detection_auc']:.4f}")
+        print(f"  Detection Acc:     {test_metrics['detection_accuracy']:.4f}")
+        print(f"  F1 Score:          {test_metrics['f1']:.4f}")
+        print(f"  Precision:         {test_metrics['precision']:.4f}")
+        print(f"  Recall:            {test_metrics['recall']:.4f}")
+    else:
+        print("\n" + "=" * 80)
+        print("GLOBAL SPLIT: no internal fusion test set — evaluate on held-out data with infer_test_set.py")
+        print("=" * 80)
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        fusion_model.load_state_dict(checkpoint['model_state_dict'])
     
     # Generate all visualizations
     print("\n" + "=" * 80)
@@ -959,90 +965,100 @@ def train_fusion_model(config, checkpoint_paths, num_epochs=30, batch_size=4, le
     # 1. Training history
     history_path = os.path.join(output_dir, 'training_history.png')
     plot_training_history(history, history_path)
-    
-    # 2. Test confusion matrix
-    test_cm_path = os.path.join(output_dir, 'test_confusion_matrix.png')
-    plot_confusion_matrix(test_metrics['confusion_matrix'], test_cm_path,
-                         title='Test Set Confusion Matrix')
-    
-    # 3. Test location AUCs
-    test_loc_path = os.path.join(output_dir, 'test_location_aucs.png')
-    plot_location_aucs(test_metrics['location_aucs'], test_loc_path,
-                      title='Test Set: AUC per Anatomical Location')
-    
-    # 4. Location AUCs comparison (validation vs test)
-    comparison_path = os.path.join(output_dir, 'location_aucs_comparison.png')
-    
-    # Load best validation metrics
+
     best_checkpoint = torch.load(checkpoint_path, weights_only=False)
     best_val_metrics = best_checkpoint['val_metrics']
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
-    
-    x = np.arange(len(LOCATION_LABELS))
-    width = 0.35
-    
-    # Validation AUCs
-    bars1 = ax1.bar(x - width/2, best_val_metrics['location_aucs'], width, 
-                    label='Validation', alpha=0.8, color='steelblue')
-    bars2 = ax1.bar(x + width/2, test_metrics['location_aucs'], width,
-                    label='Test', alpha=0.8, color='orange')
-    
-    ax1.set_xlabel('Location', fontsize=11)
-    ax1.set_ylabel('AUC', fontsize=11)
-    ax1.set_title('Validation vs Test: Location AUCs', fontsize=13, fontweight='bold')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(LOCATION_LABELS, rotation=45, ha='right', fontsize=9)
-    ax1.axhline(y=0.5, color='r', linestyle='--', linewidth=1, alpha=0.5, label='Random')
-    ax1.legend(fontsize=10)
-    ax1.grid(True, alpha=0.3, axis='y')
-    
-    # AUC difference
-    auc_diff = np.array(test_metrics['location_aucs']) - np.array(best_val_metrics['location_aucs'])
-    colors = ['green' if d >= 0 else 'red' for d in auc_diff]
-    ax2.bar(x, auc_diff, color=colors, alpha=0.7)
-    ax2.set_xlabel('Location', fontsize=11)
-    ax2.set_ylabel('AUC Difference (Test - Val)', fontsize=11)
-    ax2.set_title('Performance Change: Test vs Validation', fontsize=13, fontweight='bold')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(LOCATION_LABELS, rotation=45, ha='right', fontsize=9)
-    ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
-    ax2.grid(True, alpha=0.3, axis='y')
-    
-    plt.tight_layout()
-    plt.savefig(comparison_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"Location AUCs comparison saved to: {comparison_path}")
-    
-    # Save results
-    results = {
-        'test_weighted_auc': float(test_metrics['weighted_auc']),
-        'test_detection_auc': float(test_metrics['detection_auc']),
-        'test_accuracy': float(test_metrics['detection_accuracy']),
-        'test_f1': float(test_metrics['f1']),
-        'test_precision': float(test_metrics['precision']),
-        'test_recall': float(test_metrics['recall']),
-        'test_location_aucs': {LOCATION_LABELS[i]: float(test_metrics['location_aucs'][i]) 
-                              for i in range(len(LOCATION_LABELS))},
-        'best_val_weighted_auc': float(best_val_weighted_auc),
-        'best_epoch': best_epoch,
-        'total_epochs_trained': epoch + 1
-    }
-    
-    results_path = os.path.join(output_dir, 'test_results_fusion.json')
-    with open(results_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    print(f"\n[OK] All outputs saved to: {output_dir}")
-    print("\nGenerated files:")
-    print(f"  - training_history.png")
-    print(f"  - test_confusion_matrix.png")
-    print(f"  - test_location_aucs.png")
-    print(f"  - location_aucs_comparison.png")
-    print(f"  - best_val_confusion_matrix.png")
-    print(f"  - best_val_location_aucs.png")
-    print(f"  - test_results_fusion.json")
-    print(f"  - best_fusion_model.pth")
+
+    if test_metrics is not None:
+        test_cm_path = os.path.join(output_dir, 'test_confusion_matrix.png')
+        plot_confusion_matrix(test_metrics['confusion_matrix'], test_cm_path,
+                             title='Test Set Confusion Matrix')
+
+        test_loc_path = os.path.join(output_dir, 'test_location_aucs.png')
+        plot_location_aucs(test_metrics['location_aucs'], test_loc_path,
+                          title='Test Set: AUC per Anatomical Location')
+
+        comparison_path = os.path.join(output_dir, 'location_aucs_comparison.png')
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 6))
+        x = np.arange(len(LOCATION_LABELS))
+        width = 0.35
+        ax1.bar(x - width/2, best_val_metrics['location_aucs'], width,
+                label='Validation', alpha=0.8, color='steelblue')
+        ax1.bar(x + width/2, test_metrics['location_aucs'], width,
+                label='Test', alpha=0.8, color='orange')
+        ax1.set_xlabel('Location', fontsize=11)
+        ax1.set_ylabel('AUC', fontsize=11)
+        ax1.set_title('Validation vs Test: Location AUCs', fontsize=13, fontweight='bold')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(LOCATION_LABELS, rotation=45, ha='right', fontsize=9)
+        ax1.axhline(y=0.5, color='r', linestyle='--', linewidth=1, alpha=0.5, label='Random')
+        ax1.legend(fontsize=10)
+        ax1.grid(True, alpha=0.3, axis='y')
+        auc_diff = np.array(test_metrics['location_aucs']) - np.array(best_val_metrics['location_aucs'])
+        colors = ['green' if d >= 0 else 'red' for d in auc_diff]
+        ax2.bar(x, auc_diff, color=colors, alpha=0.7)
+        ax2.set_xlabel('Location', fontsize=11)
+        ax2.set_ylabel('AUC Difference (Test - Val)', fontsize=11)
+        ax2.set_title('Performance Change: Test vs Validation', fontsize=13, fontweight='bold')
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(LOCATION_LABELS, rotation=45, ha='right', fontsize=9)
+        ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
+        ax2.grid(True, alpha=0.3, axis='y')
+        plt.tight_layout()
+        plt.savefig(comparison_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Location AUCs comparison saved to: {comparison_path}")
+
+        results = {
+            'split_mode': 'legacy',
+            'test_weighted_auc': float(test_metrics['weighted_auc']),
+            'test_detection_auc': float(test_metrics['detection_auc']),
+            'test_accuracy': float(test_metrics['detection_accuracy']),
+            'test_f1': float(test_metrics['f1']),
+            'test_precision': float(test_metrics['precision']),
+            'test_recall': float(test_metrics['recall']),
+            'test_location_aucs': {LOCATION_LABELS[i]: float(test_metrics['location_aucs'][i])
+                                  for i in range(len(LOCATION_LABELS))},
+            'best_val_weighted_auc': float(best_val_weighted_auc),
+            'best_epoch': best_epoch,
+            'total_epochs_trained': epoch + 1
+        }
+        results_path = os.path.join(output_dir, 'test_results_fusion.json')
+        with open(results_path, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        print(f"\n[OK] All outputs saved to: {output_dir}")
+        print("\nGenerated files:")
+        print("  - training_history.png")
+        print("  - test_confusion_matrix.png")
+        print("  - test_location_aucs.png")
+        print("  - location_aucs_comparison.png")
+        print("  - best_val_confusion_matrix.png")
+        print("  - best_val_location_aucs.png")
+        print("  - test_results_fusion.json")
+        print("  - best_fusion_model.pth")
+    else:
+        results = {
+            'split_mode': 'global',
+            'note': 'Held-out test metrics: run python infer_test_set.py --fusion_model <this_dir>/best_fusion_model.pth',
+            'best_val_weighted_auc': float(best_val_weighted_auc),
+            'best_val_metrics_summary': {
+                'weighted_auc': float(best_val_metrics['weighted_auc']),
+                'detection_auc': float(best_val_metrics['detection_auc']),
+                'f1': float(best_val_metrics['f1']),
+            },
+            'best_epoch': best_epoch,
+            'total_epochs_trained': epoch + 1
+        }
+        results_path = os.path.join(output_dir, 'fusion_val_results.json')
+        with open(results_path, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"\n[OK] Outputs saved to: {output_dir}")
+        print("  - training_history.png")
+        print("  - best_val_confusion_matrix.png")
+        print("  - best_val_location_aucs.png")
+        print("  - fusion_val_results.json (no internal fusion test — use infer_test_set.py)")
+        print("  - best_fusion_model.pth")
     
     return output_dir, results
 

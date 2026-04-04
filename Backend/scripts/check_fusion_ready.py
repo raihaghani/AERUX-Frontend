@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Pre-flight Check for Late Fusion Training
 
@@ -14,18 +18,20 @@ print("=" * 80)
 
 all_checks_passed = True
 
-# Check 1: Selected dataset exists
-print("\n[1/6] Checking selected dataset...")
-selected_dataset_path = "E:/Education/Aerux_Final/data_splits/selected_dataset_2000.csv"
-if os.path.exists(selected_dataset_path):
-    df = pd.read_csv(selected_dataset_path)
-    print(f"  ✓ Found selected_dataset_2000.csv")
-    print(f"  ✓ Total samples: {len(df)}")
-    print(f"    - CTA: {len(df[df['Modality'] == 'CTA'])}")
-    print(f"    - MRA: {len(df[df['Modality'] == 'MRA'])}")
-    print(f"    - MRI: {len(df[df['Modality'].str.contains('MRI')])}")
+# Check 1: train.csv exists
+print("\n[1/6] Checking train.csv...")
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from src.config.config import Config
+_cfg = Config()
+train_csv = _cfg.data.train_csv
+if os.path.exists(train_csv):
+    df = pd.read_csv(train_csv)
+    print(f"  ✓ Found train.csv")
+    print(f"  ✓ Total rows: {len(df)}")
 else:
-    print(f"  ✗ ERROR: Selected dataset not found at {selected_dataset_path}")
+    print(f"  ✗ ERROR: train.csv not found at {train_csv}")
     all_checks_passed = False
 
 # Check 2: Preprocessed data directories exist

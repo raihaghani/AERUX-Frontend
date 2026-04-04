@@ -1,5 +1,9 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
-Multi-Task Training Script for ResNet50
+Multi-Task Training Script for DenseNet121 (RadImageNet pretrained)
 Trains models for Detection + Localization + Segmentation
 Implements 4-fold cross-validation
 Implements competition metric: Mean Weighted Columnwise AUCROC
@@ -11,10 +15,10 @@ where:
 
 
 Usage:
-    python train_multitask.py --modality CTA
-    python train_multitask.py --modality MRA
-    python train_multitask.py --modality MRI
-    python train_multitask.py --all
+    python train_multitask_DenseNet.py --modality CTA
+    python train_multitask_DenseNet.py --modality MRA
+    python train_multitask_DenseNet.py --modality MRI
+    python train_multitask_DenseNet.py --all
 """
 
 import os
@@ -45,10 +49,24 @@ plt.rcParams['figure.figsize'] = (12, 8)
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config.config import Config
+from src.config.config import Config
 
-# Import from constants
-from constants import LOCATION_LABELS
+# 13 Location labels - MUST MATCH EXACT COLUMN NAMES IN train.csv
+LOCATION_LABELS = [
+    "Left Infraclinoid Internal Carotid Artery",
+    "Right Infraclinoid Internal Carotid Artery",
+    "Left Supraclinoid Internal Carotid Artery",
+    "Right Supraclinoid Internal Carotid Artery",
+    "Left Middle Cerebral Artery",
+    "Right Middle Cerebral Artery",
+    "Anterior Communicating Artery",
+    "Left Anterior Cerebral Artery",
+    "Right Anterior Cerebral Artery",
+    "Left Posterior Communicating Artery",
+    "Right Posterior Communicating Artery",
+    "Basilar Tip",
+    "Other Posterior Circulation"
+]
 
 
 class MultiTaskDataset(Dataset):
@@ -176,137 +194,172 @@ class MultiTaskDataset(Dataset):
         return volume, mask
 
 
-class MultiTaskResNet50(nn.Module):
-    """ResNet50 with multiple task heads: Detection, Localization, and Segmentation"""
-    
-    def __init__(self, num_detection_classes=2, num_location_classes=13, input_channels=7, pretrained=True):
-        super(MultiTaskResNet50, self).__init__()
-        
-        # Load pretrained ResNet50
-        from torchvision import models
+def _load_densenet121_backbone(pretrained=True):
+    """Load DenseNet121 backbone, trying RadImageNet weights first then ImageNet fallback."""
+    from torchvision.models import densenet121, DenseNet121_Weights
+
+    if not pretrained:
+        return densenet121(weights=None)
+
+    # --- Try RadImageNet pretrained weights (medical-domain pretraining) ---
+    try:
+        from huggingface_hub import hf_hub_download
+
+        print("Downloading RadImageNet DenseNet121 weights from HuggingFace Hub...")
+        model_path = hf_hub_download(
+            repo_id="Lab-Rasool/RadImageNet", filename="DenseNet121.pt"
+        )
+        loaded = torch.load(model_path, map_location="cpu", weights_only=False)
+
+        if isinstance(loaded, nn.Module):
+            print("✓ Loaded RadImageNet pretrained DenseNet121 (full model)")
+            return loaded
+
+        # Loaded object is a state_dict
+        model = densenet121(weights=None)
+        model.load_state_dict(loaded, strict=False)
+        print("✓ Loaded RadImageNet pretrained DenseNet121 (state_dict)")
+        return model
+
+    except ImportError:
+        print("huggingface_hub not installed (pip install huggingface_hub).")
+        print("  Falling back to ImageNet pretrained DenseNet121.")
+    except Exception as e:
+        print(f"Could not load RadImageNet weights: {e}")
+        print("  Falling back to ImageNet pretrained DenseNet121.")
+
+    return densenet121(weights=DenseNet121_Weights.IMAGENET1K_V1)
+
+
+class MultiTaskDenseNet(nn.Module):
+    """DenseNet121 (RadImageNet pretrained) with multi-task heads for
+    Detection, Localization, and Segmentation.
+
+    DenseNet121 encoder feature maps (for 256×256 input):
+        conv0 + norm0 + relu0 :  64ch, 128×128   (skip1)
+        pool0                 :  64ch,  64×64
+        denseblock1           : 256ch,  64×64     (skip2)
+        transition1           : 128ch,  32×32
+        denseblock2           : 512ch,  32×32     (skip3)
+        transition2           : 256ch,  16×16
+        denseblock3           : 1024ch, 16×16     (skip4)
+        transition3           : 512ch,   8×8
+        denseblock4 + norm5   : 1024ch,  8×8      (bottleneck)
+
+    Classification heads branch from the bottleneck via global average pooling.
+    Segmentation decoder mirrors the encoder with skip connections.
+    """
+
+    def __init__(self, num_detection_classes=2, num_location_classes=13,
+                 input_channels=7, pretrained=True):
+        super(MultiTaskDenseNet, self).__init__()
+
+        densenet = _load_densenet121_backbone(pretrained)
+        features = densenet.features
+
+        # ── Modified first conv to accept 7-channel 2.5D input ──
+        self.conv0 = nn.Conv2d(input_channels, 64, kernel_size=7,
+                               stride=2, padding=3, bias=False)
         if pretrained:
-            resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-        else:
-            resnet = models.resnet50(weights=None)
-        
-        # Modify first conv layer to accept 7 channels
-        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        
-        # Initialize new conv1 weights
-        if pretrained:
-            pretrained_weights = resnet.conv1.weight.data
-            self.conv1.weight.data = pretrained_weights.repeat(1, input_channels // 3 + 1, 1, 1)[:, :input_channels, :, :]
-        
-        # Encoder layers
-        self.bn1 = resnet.bn1
-        self.relu = resnet.relu
-        self.maxpool = resnet.maxpool
-        self.layer1 = resnet.layer1  # 256 channels
-        self.layer2 = resnet.layer2  # 512 channels
-        self.layer3 = resnet.layer3  # 1024 channels
-        self.layer4 = resnet.layer4  # 2048 channels
-        self.avgpool = resnet.avgpool
-        
-        # Detection head (binary classification)
+            w = features.conv0.weight.data  # (64, 3, 7, 7)
+            self.conv0.weight.data = w.repeat(
+                1, input_channels // 3 + 1, 1, 1
+            )[:, :input_channels, :, :]
+
+        # ── Encoder stages (from pretrained DenseNet121) ──
+        self.norm0 = features.norm0
+        self.relu0 = features.relu0
+        self.pool0 = features.pool0
+
+        self.denseblock1 = features.denseblock1    # → 256ch, 64×64
+        self.transition1 = features.transition1    # → 128ch, 32×32
+        self.denseblock2 = features.denseblock2    # → 512ch, 32×32
+        self.transition2 = features.transition2    # → 256ch, 16×16
+        self.denseblock3 = features.denseblock3    # → 1024ch, 16×16
+        self.transition3 = features.transition3    # → 512ch, 8×8
+        self.denseblock4 = features.denseblock4    # → 1024ch, 8×8
+        self.norm5 = features.norm5
+
+        # ── Classification heads (from 1024-D global-pooled bottleneck) ──
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+
         self.detection_head = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(2048, 512),
+            nn.Linear(1024, 512),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(512, num_detection_classes)
+            nn.Linear(512, num_detection_classes),
         )
-        
-        # Localization head (multi-label classification for 13 locations)
+
         self.localization_head = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(2048, 512),
+            nn.Linear(1024, 512),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(512, num_location_classes)
+            nn.Linear(512, num_location_classes),
         )
-        
-        # Segmentation decoder (U-Net style)
-        # Input spatial size: 256x256
-        # After conv1 (stride=2): 128x128
-        # After maxpool (stride=2): 64x64 (x0)
-        # After layer1: 64x64 (x1)
-        # After layer2 (stride=2): 32x32 (x2)
-        # After layer3 (stride=2): 16x16 (x3)
-        # After layer4 (stride=2): 8x8 (x4)
-        
-        self.seg_upconv4 = nn.ConvTranspose2d(2048, 1024, kernel_size=2, stride=2)  # 8x8 -> 16x16
-        self.seg_conv4 = nn.Sequential(
-            nn.Conv2d(2048, 1024, kernel_size=3, padding=1),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(inplace=True)
-        )
-        
-        self.seg_upconv3 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)  # 16x16 -> 32x32
-        self.seg_conv3 = nn.Sequential(
-            nn.Conv2d(1024, 512, kernel_size=3, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True)
-        )
-        
-        self.seg_upconv2 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)  # 32x32 -> 64x64
-        self.seg_conv2 = nn.Sequential(
-            nn.Conv2d(512, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True)
-        )
-        
-        self.seg_upconv1 = nn.ConvTranspose2d(256, 64, kernel_size=2, stride=2)  # 64x64 -> 128x128
-        self.seg_conv1 = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True)
-        )
-        
+
+        # ── Segmentation decoder (skip connections from encoder stages) ──
+        # 8×8  → 16×16, cat skip4 (1024ch)
+        self.seg_up4 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
+        self.seg_dec4 = nn.Sequential(
+            nn.Conv2d(512 + 1024, 512, 3, padding=1, bias=False),
+            nn.BatchNorm2d(512), nn.ReLU(inplace=True))
+
+        # 16×16 → 32×32, cat skip3 (512ch)
+        self.seg_up3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.seg_dec3 = nn.Sequential(
+            nn.Conv2d(256 + 512, 256, 3, padding=1, bias=False),
+            nn.BatchNorm2d(256), nn.ReLU(inplace=True))
+
+        # 32×32 → 64×64, cat skip2 (256ch)
+        self.seg_up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.seg_dec2 = nn.Sequential(
+            nn.Conv2d(128 + 256, 128, 3, padding=1, bias=False),
+            nn.BatchNorm2d(128), nn.ReLU(inplace=True))
+
+        # 64×64 → 128×128, cat skip1 (64ch)
+        self.seg_up1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.seg_dec1 = nn.Sequential(
+            nn.Conv2d(64 + 64, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64), nn.ReLU(inplace=True))
+
+        # 128×128 → 256×256
         self.seg_final = nn.Sequential(
-            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),  # 128x128 -> 256x256
-            nn.Conv2d(32, 1, kernel_size=1)
-            # No sigmoid here - will be applied in loss function for numerical stability
+            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
+            nn.Conv2d(32, 1, kernel_size=1),
         )
-    
+
     def forward(self, x):
-        # Encoder with proper feature map saving
-        # Input: 256x256
-        x_conv = self.conv1(x)  # 128x128
-        x_conv = self.bn1(x_conv)
-        x_conv = self.relu(x_conv)
-        x0 = self.maxpool(x_conv)  # 64x64
-        
-        x1 = self.layer1(x0)  # 64x64 (no downsampling in layer1)
-        x2 = self.layer2(x1)  # 32x32
-        x3 = self.layer3(x2)  # 16x16
-        x4 = self.layer4(x3)  # 8x8
-        
-        # Detection and Localization (use global pooled features)
-        pooled = self.avgpool(x4)
-        pooled = torch.flatten(pooled, 1)
-        
+        # ── Encoder ──
+        x0 = self.relu0(self.norm0(self.conv0(x)))        # 64ch,  128×128
+        skip1 = x0
+
+        x0 = self.pool0(x0)                               # 64ch,   64×64
+        x1 = self.denseblock1(x0)                          # 256ch,  64×64
+        skip2 = x1
+
+        x2 = self.denseblock2(self.transition1(x1))        # 512ch,  32×32
+        skip3 = x2
+
+        x3 = self.denseblock3(self.transition2(x2))        # 1024ch, 16×16
+        skip4 = x3
+
+        x4 = self.denseblock4(self.transition3(x3))        # 1024ch,  8×8
+        x4 = F.relu(self.norm5(x4))
+
+        # ── Classification heads ──
+        pooled = torch.flatten(self.avgpool(x4), 1)        # (B, 1024)
         detection_logits = self.detection_head(pooled)
         localization_logits = self.localization_head(pooled)
-        
-        # Segmentation decoder with proper skip connections
-        seg = self.seg_upconv4(x4)  # 8x8 -> 16x16
-        seg = torch.cat([seg, x3], dim=1)  # concat with x3 (16x16)
-        seg = self.seg_conv4(seg)
-        
-        seg = self.seg_upconv3(seg)  # 16x16 -> 32x32
-        seg = torch.cat([seg, x2], dim=1)  # concat with x2 (32x32)
-        seg = self.seg_conv3(seg)
-        
-        seg = self.seg_upconv2(seg)  # 32x32 -> 64x64
-        seg = torch.cat([seg, x1], dim=1)  # concat with x1 (64x64)
-        seg = self.seg_conv2(seg)
-        
-        seg = self.seg_upconv1(seg)  # 64x64 -> 128x128
-        seg = torch.cat([seg, x_conv], dim=1)  # concat with x_conv (128x128) not x0!
-        seg = self.seg_conv1(seg)
-        
-        segmentation_mask = self.seg_final(seg)  # 128x128 -> 256x256
-        
+
+        # ── Segmentation decoder with skip connections ──
+        seg = self.seg_dec4(torch.cat([self.seg_up4(x4), skip4], dim=1))   # 16×16
+        seg = self.seg_dec3(torch.cat([self.seg_up3(seg), skip3], dim=1))  # 32×32
+        seg = self.seg_dec2(torch.cat([self.seg_up2(seg), skip2], dim=1))  # 64×64
+        seg = self.seg_dec1(torch.cat([self.seg_up1(seg), skip1], dim=1))  # 128×128
+        segmentation_mask = self.seg_final(seg)                            # 256×256
+
         return detection_logits, localization_logits, segmentation_mask
 
 
@@ -646,12 +699,12 @@ def train_single_modality(modality, config, num_epochs=50, batch_size=8, learnin
     """Train a single modality multi-task model with k-fold cross-validation"""
     
     print("=" * 80)
-    print(f"TRAINING MULTI-TASK RESNET50 MODEL FOR {modality} WITH {n_folds}-FOLD CROSS-VALIDATION")
+    print(f"TRAINING MULTI-TASK DENSENET121 MODEL FOR {modality} WITH {n_folds}-FOLD CROSS-VALIDATION")
     print("=" * 80)
     
     # Create output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(config.data.output_root, f"multitask_{modality}_{timestamp}_kfold")
+    output_dir = os.path.join(config.data.output_root, "multitask_kfold_new", f"multitask_DenseNet_{modality}_{timestamp}_kfold")
     os.makedirs(output_dir, exist_ok=True)
     
     # Determine base directory for modality
@@ -665,14 +718,11 @@ def train_single_modality(modality, config, num_epochs=50, batch_size=8, learnin
     print(f"\nData directory: {base_dir}")
     print(f"Output directory: {output_dir}")
     
-    # Load data splits
+    # Load data splits (global train only when use_global_split — see create_global_split.py)
     print("\nLoading data splits...")
-    if config.data.use_selected_dataset and os.path.exists(config.data.selected_dataset_csv):
-        df = pd.read_csv(config.data.selected_dataset_csv)
-        print(f"Loaded selected dataset: {len(df)} series")
-    else:
-        df = pd.read_csv(config.data.train_csv)
-        print(f"Loaded full dataset: {len(df)} series")
+    from src.datasets.global_split_utils import load_multitask_source_dataframe
+
+    df = load_multitask_source_dataframe(config)
     
     # Filter by modality
     if modality == 'MRI':
@@ -728,8 +778,8 @@ def train_single_modality(modality, config, num_epochs=50, batch_size=8, learnin
                                num_workers=4, pin_memory=True)
         
         # Initialize model for this fold
-        model = MultiTaskResNet50(num_detection_classes=2, num_location_classes=13, 
-                                   input_channels=7, pretrained=True)
+        model = MultiTaskDenseNet(num_detection_classes=2, num_location_classes=13,
+                                  input_channels=7, pretrained=True)
         model = model.to(device)
         
         if fold_idx == 0:  # Print model info only for first fold
@@ -810,7 +860,7 @@ def train_single_modality(modality, config, num_epochs=50, batch_size=8, learnin
                 patience_counter = 0
                 
                 # Save model
-                checkpoint_path = os.path.join(fold_dir, f'best_model_{modality}_fold{fold_idx + 1}.pth')
+                checkpoint_path = os.path.join(fold_dir, f'best_model_DenseNet_{modality}_fold{fold_idx + 1}.pth')
                 torch.save({
                     'fold': fold_idx + 1,
                     'epoch': epoch + 1,
@@ -951,9 +1001,322 @@ def train_single_modality(modality, config, num_epochs=50, batch_size=8, learnin
     return output_dir, avg_metrics
 
 
+def validate_cv_completed(cv_dir, modality, n_folds=4):
+    """Validate that K-fold cross-validation has been completed.
+    
+    Checks that:
+    - cv_dir exists
+    - cross_validation_results_{modality}.json exists
+    - Each fold's best_model checkpoint exists
+    
+    Returns the parsed CV results dict on success, or exits with an error.
+    """
+    if not os.path.isdir(cv_dir):
+        print(f"\n✗ ERROR: Cross-validation directory not found: {cv_dir}")
+        print(f"\n  You must complete K-fold CV first by running:")
+        print(f"    python {os.path.basename(__file__)} --modality {modality}")
+        print(f"\n  Then use the output directory as --cv_dir.")
+        sys.exit(1)
+    
+    cv_results_path = os.path.join(cv_dir, f'cross_validation_results_{modality}.json')
+    if not os.path.isfile(cv_results_path):
+        print(f"\n✗ ERROR: CV results file not found: {cv_results_path}")
+        print(f"  The K-fold cross-validation does not appear to be completed for {modality}.")
+        print(f"\n  Run K-fold CV first:")
+        print(f"    python {os.path.basename(__file__)} --modality {modality}")
+        sys.exit(1)
+    
+    with open(cv_results_path, 'r') as f:
+        cv_results = json.load(f)
+    
+    # Check each fold's best model
+    missing_models = []
+    for fold_idx in range(1, n_folds + 1):
+        fold_dir = os.path.join(cv_dir, f'fold_{fold_idx}')
+        model_path = os.path.join(fold_dir, f'best_model_DenseNet_{modality}_fold{fold_idx}.pth')
+        if not os.path.isfile(model_path):
+            missing_models.append(model_path)
+    
+    if missing_models:
+        print(f"\n✗ ERROR: The following fold model checkpoints are missing:")
+        for p in missing_models:
+            print(f"    {p}")
+        print(f"\n  K-fold cross-validation is incomplete for {modality}.")
+        print(f"  Run it first:")
+        print(f"    python {os.path.basename(__file__)} --modality {modality}")
+        sys.exit(1)
+    
+    print(f"\n✓ Cross-validation results validated successfully.")
+    print(f"  CV directory: {cv_dir}")
+    print(f"  All {n_folds} fold models found.")
+    
+    return cv_results
+
+
+def train_final_model(modality, config, cv_dir, batch_size=8, learning_rate=1e-4, n_folds=4):
+    """Train a final DenseNet121 model on the entire training pool and evaluate on held-out test set.
+    
+    Uses the median best epoch from CV as the fixed number of training epochs.
+    No early stopping — the epoch count is determined from CV results.
+    """
+    
+    # Validate CV is completed
+    cv_results = validate_cv_completed(cv_dir, modality, n_folds)
+    
+    # Extract median best epoch from CV folds
+    best_epochs = [r['best_epoch'] for r in cv_results['fold_results']]
+    median_epochs = int(np.median(best_epochs))
+    
+    print("\n" + "=" * 80)
+    print(f"TRAINING FINAL DENSENET121 MODEL FOR {modality}")
+    print("=" * 80)
+    print(f"\nCV fold best epochs: {best_epochs}")
+    print(f"Median best epoch (used for final training): {median_epochs}")
+    print(f"\nCV Performance Summary:")
+    print(f"  Weighted AUC: {cv_results['avg_weighted_auc']:.4f} ± {cv_results['std_weighted_auc']:.4f}")
+    print(f"  Detection AUC: {cv_results['avg_detection_auc']:.4f} ± {cv_results['std_detection_auc']:.4f}")
+    print(f"  F1 Score: {cv_results['avg_f1']:.4f} ± {cv_results['std_f1']:.4f}")
+    
+    # Create output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = os.path.join(config.data.output_root, f"multitask_DenseNet_{modality}_{timestamp}_final")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Determine base directory for modality
+    if modality == 'CTA':
+        base_dir = config.data.preprocessed_cta_dir
+    elif modality == 'MRA':
+        base_dir = config.data.preprocessed_mra_dir
+    else:  # MRI
+        base_dir = config.data.preprocessed_mri_dir
+    
+    print(f"\nData directory: {base_dir}")
+    print(f"Output directory: {output_dir}")
+    
+    # Load FULL training pool (all data allowed for training)
+    print("\nLoading full training pool...")
+    from src.datasets.global_split_utils import load_multitask_source_dataframe
+    df = load_multitask_source_dataframe(config)
+    
+    # Filter by modality
+    if modality == 'MRI':
+        df_modality = df[df['Modality'].str.contains('MRI', case=False, na=False)].copy()
+    else:
+        df_modality = df[df['Modality'].str.upper() == modality].copy()
+    
+    print(f"Full training pool for {modality}: {len(df_modality)} series")
+    print(f"  Positive (aneurysm): {int(df_modality['Aneurysm Present'].sum())}")
+    print(f"  Negative (no aneurysm): {int(len(df_modality) - df_modality['Aneurysm Present'].sum())}")
+    
+    # Device setup
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"\nUsing device: {device}")
+    
+    # Create dataset on ALL training data
+    train_dataset = MultiTaskDataset(
+        df_modality, modality, base_dir, config.data.train_csv,
+        segmentation_dir=config.data.segmentation_masks_dir, augment=True
+    )
+    
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=4, pin_memory=True)
+    
+    # Initialize model
+    model = MultiTaskDenseNet(num_detection_classes=2, num_location_classes=13,
+                               input_channels=7, pretrained=True)
+    model = model.to(device)
+    
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"\nModel parameters:")
+    print(f"  Total parameters: {total_params:,}")
+    print(f"  Trainable parameters: {trainable_params:,}")
+    
+    # Loss and optimizer
+    criterion = MultiTaskLoss(detection_weight=1.0, localization_weight=1.0, segmentation_weight=2.0)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=5e-5)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=median_epochs, eta_min=1e-7)
+    
+    # Mixed precision scaler
+    scaler = GradScaler('cuda') if torch.cuda.is_available() else None
+    
+    # Training history
+    history = {
+        'train_loss': [], 'train_det_loss': [], 'train_loc_loss': [], 'train_seg_loss': [],
+        'train_weighted_auc': [], 'train_det_auc': []
+    }
+    
+    # Training loop — fixed epoch count, no early stopping
+    print(f"\nStarting FINAL training for {median_epochs} epochs (median best epoch from CV)...")
+    print("NOTE: No validation-based early stopping — epoch count fixed from CV.")
+    print("-" * 80)
+    
+    for epoch in range(median_epochs):
+        print(f"\nEpoch {epoch+1}/{median_epochs}")
+        print("-" * 40)
+        
+        train_loss, train_det_loss, train_loc_loss, train_seg_loss, train_weighted_auc, train_det_auc = train_epoch(
+            model, train_loader, criterion, optimizer, device, scaler
+        )
+        
+        scheduler.step()
+        
+        # Record history
+        history['train_loss'].append(train_loss)
+        history['train_det_loss'].append(train_det_loss)
+        history['train_loc_loss'].append(train_loc_loss)
+        history['train_seg_loss'].append(train_seg_loss)
+        history['train_weighted_auc'].append(train_weighted_auc)
+        history['train_det_auc'].append(train_det_auc)
+        
+        print(f"Train - Loss: {train_loss:.4f} | Weighted AUC: {train_weighted_auc:.4f} | Det AUC: {train_det_auc:.4f}")
+    
+    # Save final model
+    final_model_path = os.path.join(output_dir, f'final_model_DenseNet_{modality}.pth')
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'training_epochs': median_epochs,
+        'cv_best_epochs': best_epochs,
+        'cv_dir': cv_dir,
+        'modality': modality,
+        'history': history
+    }, final_model_path)
+    print(f"\n✓ Final model saved to: {final_model_path}")
+    
+    # Save training history
+    history_path = os.path.join(output_dir, f'final_training_history_DenseNet_{modality}.json')
+    with open(history_path, 'w') as f:
+        json.dump(history, f, indent=2)
+    
+    # Plot training loss curve
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    axes[0].plot(history['train_loss'], marker='o', color='steelblue')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].set_title('Final Training: Total Loss')
+    axes[0].grid(True)
+    
+    axes[1].plot(history['train_weighted_auc'], marker='o', color='green')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Weighted AUC')
+    axes[1].set_title('Final Training: Weighted AUC')
+    axes[1].grid(True)
+    
+    axes[2].plot(history['train_det_loss'], label='Detection', marker='o')
+    axes[2].plot(history['train_loc_loss'], label='Localization', marker='s')
+    axes[2].plot(history['train_seg_loss'], label='Segmentation', marker='^')
+    axes[2].set_xlabel('Epoch')
+    axes[2].set_ylabel('Loss')
+    axes[2].set_title('Final Training: Component Losses')
+    axes[2].legend()
+    axes[2].grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f'final_training_history_DenseNet_{modality}.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # ========== EVALUATE ON HELD-OUT TEST SET ==========
+    print("\n" + "=" * 80)
+    print(f"EVALUATING FINAL DENSENET121 MODEL ON HELD-OUT TEST SET")
+    print("=" * 80)
+    
+    from src.datasets.global_split_utils import load_global_test_dataframe
+    
+    if not getattr(config.data, 'use_global_split', False):
+        print("\n⚠ WARNING: use_global_split is False. No held-out test set available.")
+        print("  Skipping test evaluation. Set use_global_split=True and run create_global_split.py first.")
+        print(f"\nAll outputs saved to: {output_dir}")
+        return output_dir
+    
+    test_df = load_global_test_dataframe(config)
+    
+    # Filter test set by modality
+    from preprocess_dataset import normalize_modality
+    test_df = test_df.copy()
+    test_df['Modality'] = test_df['Modality'].apply(normalize_modality)
+    
+    if modality == 'MRI':
+        test_df_modality = test_df[test_df['Modality'].str.contains('MRI', case=False, na=False)].copy()
+    else:
+        test_df_modality = test_df[test_df['Modality'].str.upper() == modality].copy()
+    
+    print(f"\nTest set for {modality}: {len(test_df_modality)} series")
+    print(f"  Positive (aneurysm): {int(test_df_modality['Aneurysm Present'].sum())}")
+    print(f"  Negative (no aneurysm): {int(len(test_df_modality) - test_df_modality['Aneurysm Present'].sum())}")
+    
+    if len(test_df_modality) == 0:
+        print(f"\n⚠ WARNING: No test samples found for {modality}. Skipping test evaluation.")
+        print(f"\nAll outputs saved to: {output_dir}")
+        return output_dir
+    
+    # Create test dataset and loader
+    test_dataset = MultiTaskDataset(
+        test_df_modality, modality, base_dir, config.data.train_csv,
+        segmentation_dir=config.data.segmentation_masks_dir, augment=False
+    )
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                             num_workers=4, pin_memory=True)
+    
+    # Run evaluation
+    test_metrics = validate(model, test_loader, criterion, device)
+    
+    print(f"\n{'='*60}")
+    print(f"HELD-OUT TEST SET RESULTS — {modality} (Final DenseNet121 Model)")
+    print(f"{'='*60}")
+    print(f"  Weighted AUC (Competition): {test_metrics['weighted_auc']:.4f}")
+    print(f"  Detection AUC:              {test_metrics['detection_auc']:.4f}")
+    print(f"  Detection Accuracy:         {test_metrics['detection_accuracy']:.4f}")
+    print(f"  Precision:                  {test_metrics['precision']:.4f}")
+    print(f"  Recall:                     {test_metrics['recall']:.4f}")
+    print(f"  F1 Score:                   {test_metrics['f1']:.4f}")
+    print(f"{'='*60}")
+    
+    # Save test metrics
+    test_results = {
+        'modality': modality,
+        'model': 'DenseNet121',
+        'evaluation_split': 'global_held_out_test',
+        'training_epochs': median_epochs,
+        'cv_best_epochs': best_epochs,
+        'cv_dir': cv_dir,
+        'cv_avg_weighted_auc': cv_results['avg_weighted_auc'],
+        'cv_std_weighted_auc': cv_results['std_weighted_auc'],
+        'test_samples': len(test_df_modality),
+        'test_weighted_auc': float(test_metrics['weighted_auc']),
+        'test_detection_auc': float(test_metrics['detection_auc']),
+        'test_accuracy': float(test_metrics['detection_accuracy']),
+        'test_precision': float(test_metrics['precision']),
+        'test_recall': float(test_metrics['recall']),
+        'test_f1': float(test_metrics['f1']),
+        'test_location_aucs': [float(x) for x in test_metrics['location_aucs']],
+        'test_loss': float(test_metrics['loss']),
+    }
+    
+    test_results_path = os.path.join(output_dir, f'final_test_results_DenseNet_{modality}.json')
+    with open(test_results_path, 'w') as f:
+        json.dump(test_results, f, indent=2)
+    print(f"\nTest results saved to: {test_results_path}")
+    
+    # Plot confusion matrix and location AUCs for test set
+    cm_path = os.path.join(output_dir, f'test_confusion_matrix_DenseNet_{modality}.png')
+    plot_confusion_matrix(test_metrics['confusion_matrix'], cm_path)
+    
+    loc_auc_path = os.path.join(output_dir, f'test_location_aucs_DenseNet_{modality}.png')
+    plot_location_aucs(test_metrics['location_aucs'], loc_auc_path)
+    
+    print(f"\n" + "=" * 80)
+    print(f"All outputs saved to: {output_dir}")
+    print(f"  Final model:     {final_model_path}")
+    print(f"  Test results:    {test_results_path}")
+    print("=" * 80)
+    
+    return output_dir
+
+
 def main():
     """Main function"""
-    parser = argparse.ArgumentParser(description='Train Multi-Task ResNet50 for Aneurysm Detection/Localization/Segmentation')
+    parser = argparse.ArgumentParser(description='Train Multi-Task DenseNet121 (RadImageNet) for Aneurysm Detection/Localization/Segmentation')
     parser.add_argument('--modality', type=str, choices=['CTA', 'MRA', 'MRI'], 
                        help='Modality to train (CTA, MRA, or MRI)')
     parser.add_argument('--all', action='store_true', 
@@ -964,6 +1327,10 @@ def main():
                        help='Batch size (default: 8, reduced for multi-task)')
     parser.add_argument('--lr', type=float, default=1e-4, 
                        help='Learning rate (default: 1e-4)')
+    parser.add_argument('--train_final', action='store_true',
+                       help='Train a FINAL model on all training data (requires completed K-fold CV via --cv_dir)')
+    parser.add_argument('--cv_dir', type=str, default=None,
+                       help='Path to completed K-fold CV output directory (required with --train_final)')
     
     args = parser.parse_args()
     
@@ -979,7 +1346,24 @@ def main():
         print("Error: Please specify --modality or --all")
         return
     
-    # Train each modality
+    # ===== FINAL MODEL MODE =====
+    if args.train_final:
+        if args.cv_dir is None:
+            print("\n✗ ERROR: --cv_dir is required when using --train_final.")
+            print("  Provide the path to a completed K-fold CV output directory.")
+            print(f"\n  Example:")
+            print(f"    python {os.path.basename(__file__)} --modality CTA --train_final --cv_dir outputs/multitask_DenseNet_CTA_..._kfold")
+            sys.exit(1)
+        
+        for modality in modalities:
+            train_final_model(
+                modality, config, args.cv_dir,
+                batch_size=args.batch_size,
+                learning_rate=args.lr
+            )
+        return
+    
+    # ===== K-FOLD CROSS-VALIDATION MODE (default) =====
     all_results = {}
     for modality in modalities:
         output_dir, results = train_single_modality(
@@ -1002,6 +1386,14 @@ def main():
             print(f"  Weighted AUC (Competition): {results['avg_weighted_auc']:.4f} ± {results['std_weighted_auc']:.4f}")
             print(f"  Detection AUC:              {results['avg_detection_auc']:.4f} ± {results['std_detection_auc']:.4f}")
             print(f"  F1 Score:                   {results['avg_f1']:.4f} ± {results['std_f1']:.4f}")
+    
+    print("\n" + "-" * 80)
+    print("NEXT STEP: Train final model on all training data")
+    print("-" * 80)
+    print(f"\nTo train a final model using these CV results, run:")
+    for modality in modalities:
+        print(f"  python {os.path.basename(__file__)} --modality {modality} --train_final --cv_dir {output_dir}")
+    print()
 
 
 if __name__ == "__main__":

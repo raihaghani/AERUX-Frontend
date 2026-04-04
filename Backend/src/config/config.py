@@ -12,6 +12,12 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple
 import yaml
 
+# Project root for default data paths
+_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+_SRC_DIR = os.path.dirname(_CONFIG_DIR)
+_PROJECT_ROOT = os.path.dirname(_SRC_DIR)
+_DEFAULT_DATA_SPLITS = os.path.join(_PROJECT_ROOT, "data", "splits")
+
 
 @dataclass
 class DataConfig:
@@ -25,9 +31,9 @@ class DataConfig:
     train_localizers_csv: str = r"G:\FYP_Data\rsna-intracranial-aneurysm-detection\train_localizers.csv"
     
     # Preprocessed data directories
-    preprocessed_cta_dir: str = r"E:\Education\Aerux_Final\Preprocessed_images_2.5D\CTA"
-    preprocessed_mra_dir: str = r"E:\Education\Aerux_Final\Preprocessed_images_2.5D\MRA"
-    preprocessed_mri_dir: str = r"E:\Education\Aerux_Final\Preprocessed_images_2.5D\MRI"
+    preprocessed_cta_dir: str = r"E:\Education\Aerux_Final\data\preprocessed_images\CTA"
+    preprocessed_mra_dir: str = r"E:\Education\Aerux_Final\data\preprocessed_images\MRA"
+    preprocessed_mri_dir: str = r"E:\Education\Aerux_Final\data\preprocessed_images\MRI"
     
     # Segmentation masks directory (if available)
     segmentation_masks_dir: str = r"G:\FYP_Data\rsna-intracranial-aneurysm-detection\segmentations"
@@ -69,11 +75,18 @@ class DataConfig:
     # Modality types (Simplified: T1post and T2 are both treated as MRI)
     modalities: List[str] = field(default_factory=lambda: ["CTA", "MRA", "MRI"])
     
-    # Dataset selection parameters
-    use_selected_dataset: bool = False  # Use complete dataset instead of 2000 series subset
-    selected_dataset_csv: str = r"E:\Education\Aerux_Final\data_splits\selected_dataset_2000.csv"
     error_data_yaml: str = r"D:\FYP_Data\rsna-intracranial-aneurysm-detection\error_data.yaml"
-    
+
+    # Global train / held-out test (same UIDs for multitask, fusion, and infer_test_set).
+    # 1) Run: python create_global_split.py
+    # 2) Set use_global_split = True — multitask & fusion use global_train only; evaluate on global_test only.
+    use_global_split: bool = True
+    global_split_dir: str = _DEFAULT_DATA_SPLITS
+    global_train_split_csv: str = os.path.join(_DEFAULT_DATA_SPLITS, "global_train_series.csv")
+    global_test_split_csv: str = os.path.join(_DEFAULT_DATA_SPLITS, "global_test_series.csv")
+    global_test_fraction: float = 0.2  # fraction of filtered rows for held-out test
+    fusion_val_fraction: float = 0.15  # fraction of global-train rows used as fusion validation (rest = fusion train)
+
     # Dataset composition (for reference)
     target_cta_count: int = 1000  # 500 aneurysm + 500 no aneurysm
     target_mra_count: int = 500   # 250 aneurysm + 250 no aneurysm

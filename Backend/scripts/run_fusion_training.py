@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Script to run late fusion training with your 3 trained models
 
@@ -14,7 +18,7 @@ import glob
 # Find the latest trained model checkpoints
 def find_latest_checkpoint(modality):
     """Find the most recent checkpoint for a given modality"""
-    pattern = f"E:/Education/Aerux_Final/outputs/multitask_{modality}_*_kfold/fold_4/best_model_{modality}_fold4.pth"
+    pattern = f"E:/Education/Aerux_Final/outputs/multitask_DenseNet_{modality}_*_kfold/fold_4/best_model_DenseNet_{modality}_fold4.pth"
     checkpoints = glob.glob(pattern)
     
     if not checkpoints:
@@ -48,7 +52,7 @@ print(f"[OK] Found MRA model: {mra_checkpoint}")
 print(f"[OK] Found MRI model: {mri_checkpoint}")
 
 # Build the command
-command = f"""python train_fusion.py \
+command = f"""python train_fusion_Densenet.py \
     --cta_model "{cta_checkpoint}" \
     --mra_model "{mra_checkpoint}" \
     --mri_model "{mri_checkpoint}" \

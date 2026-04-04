@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Single-image inference + weak localization overlay for fusion model.
 
@@ -24,7 +28,7 @@ import torch
 import torch.nn.functional as F
 
 from inference_fusion import load_fusion_model
-from constants import LOCATION_LABELS
+from train_multitask import LOCATION_LABELS
 
 
 LOCATION_ANCHORS = {
