@@ -28,11 +28,15 @@ export function ChatWidget() {
         body: JSON.stringify(payload),
       });
       const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? "Chat request failed");
+      }
       const content = json.content ?? "Sorry, I couldn't generate a response.";
       addMessage({ role: "assistant", content });
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
     } catch (e) {
-      addMessage({ role: "assistant", content: "Network error. Please try again." });
+      const message = e instanceof Error ? e.message : "Network error. Please try again.";
+      addMessage({ role: "assistant", content: message });
     }
   };
 
