@@ -31,9 +31,9 @@ class DataConfig:
     train_localizers_csv: str = r"G:\FYP_Data\rsna-intracranial-aneurysm-detection\train_localizers.csv"
     
     # Preprocessed data directories
-    preprocessed_cta_dir: str = r"E:\Education\Aerux_Final\data\preprocessed_images\CTA"
-    preprocessed_mra_dir: str = r"E:\Education\Aerux_Final\data\preprocessed_images\MRA"
-    preprocessed_mri_dir: str = r"E:\Education\Aerux_Final\data\preprocessed_images\MRI"
+    preprocessed_cta_dir: str = r"E:\Projects\Aerux_Web\AERUX-Frontend\Backend\data\preprocessed_images\CTA"
+    preprocessed_mra_dir: str = r"E:\Projects\Aerux_Web\AERUX-Frontend\Backend\data\preprocessed_images\MRA"
+    preprocessed_mri_dir: str = r"E:\Projects\Aerux_Web\AERUX-Frontend\Backend\data\preprocessed_images\MRI"
     
     # Segmentation masks directory (if available)
     segmentation_masks_dir: str = r"G:\FYP_Data\rsna-intracranial-aneurysm-detection\segmentations"
@@ -42,7 +42,7 @@ class DataConfig:
     series_dir: str = r"G:\FYP_Data\rsna-intracranial-aneurysm-detection\series"
     
     # Output directories
-    output_root: str = r"E:\Education\Aerux_Final\outputs"
+    output_root: str = r"E:\Projects\Aerux_Web\AERUX-Frontend\Backend\outputs"
     
     # Data split ratios
     train_ratio: float = 0.7
@@ -75,7 +75,7 @@ class DataConfig:
     # Modality types (Simplified: T1post and T2 are both treated as MRI)
     modalities: List[str] = field(default_factory=lambda: ["CTA", "MRA", "MRI"])
     
-    error_data_yaml: str = r"D:\FYP_Data\rsna-intracranial-aneurysm-detection\error_data.yaml"
+    error_data_yaml: str = r"E:\Projects\Aerux_Web\AERUX-Frontend\Backend\error_data.yaml"
 
     # Global train / held-out test (same UIDs for multitask, fusion, and infer_test_set).
     # 1) Run: python create_global_split.py

@@ -4,7 +4,7 @@ Handles multi-modal medical imaging data (CTA, MRA, MRI) with support for
 detection, localization (12 aneurysm locations), and segmentation tasks.
 
 Note: MRI T1post and MRI T2 are treated as a single 'MRI' modality.
-Dataset uses 2000 selected series: 1000 CTA, 500 MRA, 500 MRI (250 T1 + 250 T2)
+Series lists come from train.csv (or filtered splits such as global_train_series.csv).
 
 Author: Senior Computer Vision Engineer
 Date: 2025-01-08
@@ -23,7 +23,7 @@ import ast
 
 # Import preprocessing module
 try:
-    from data.preprocessing import create_preprocessor
+    from src.datasets.preprocessing import create_preprocessor
 except ImportError:
     print("Warning: Preprocessing module not available. Install required packages: pip install SimpleITK scikit-image")
     create_preprocessor = None
@@ -39,10 +39,6 @@ class AneurysmDataset(Dataset):
     - 12-class localization: Specific aneurysm location
     - Segmentation: Pixel-level aneurysm mask
     
-    Dataset composition (2000 selected series):
-    - 1000 CTA: 500 with aneurysm, 500 without
-    - 500 MRA: 250 with aneurysm, 250 without
-    - 500 MRI: 250 with aneurysm (125 T1 + 125 T2), 250 without (125 T1 + 125 T2)
     """
     
     def __init__(
@@ -487,47 +483,24 @@ def create_data_splits(
     test_ratio: float = 0.15,
     random_seed: int = 42,
     error_yaml_path: Optional[str] = None,
-    use_selected_dataset: bool = False,
-    selected_dataset_csv: Optional[str] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Create train, validation, and test splits from CSV.
-    Optionally filters out error series and uses pre-selected dataset.
-    
-    Args:
-        train_csv_path: Path to train.csv
-        location_labels: List of location label names
-        train_ratio: Proportion for training
-        val_ratio: Proportion for validation
-        test_ratio: Proportion for testing
-        random_seed: Random seed for reproducibility
-        error_yaml_path: Path to error_data.yaml for filtering (optional)
-        use_selected_dataset: If True, load from selected_dataset_csv instead
-        selected_dataset_csv: Path to pre-selected dataset CSV (optional)
-        
-    Returns:
-        Tuple of (train_df, val_df, test_df)
+    Create train, validation, and test splits from train_csv_path.
+    Optionally filters out error series via error_yaml_path.
     """
-    # Use pre-selected dataset if specified
-    if use_selected_dataset and selected_dataset_csv and os.path.exists(selected_dataset_csv):
-        print(f"Loading pre-selected dataset from: {selected_dataset_csv}")
-        df = pd.read_csv(selected_dataset_csv)
-        print(f"Loaded {len(df)} pre-selected series")
-    else:
-        # Load full CSV
-        print(f"Loading full dataset from: {train_csv_path}")
-        df = pd.read_csv(train_csv_path)
-        print(f"Total series: {len(df)}")
-        
-        # Filter out error series if error_yaml provided
-        if error_yaml_path and os.path.exists(error_yaml_path):
-            error_series_ids = load_error_series_ids(error_yaml_path)
-            if error_series_ids:
-                original_count = len(df)
-                df = df[~df['SeriesInstanceUID'].isin(error_series_ids)]
-                removed_count = original_count - len(df)
-                print(f"Filtered out {removed_count} error series")
-                print(f"Remaining series: {len(df)}")
+    print(f"Loading full dataset from: {train_csv_path}")
+    df = pd.read_csv(train_csv_path)
+    print(f"Total series: {len(df)}")
+
+    # Filter out error series if error_yaml provided
+    if error_yaml_path and os.path.exists(error_yaml_path):
+        error_series_ids = load_error_series_ids(error_yaml_path)
+        if error_series_ids:
+            original_count = len(df)
+            df = df[~df['SeriesInstanceUID'].isin(error_series_ids)]
+            removed_count = original_count - len(df)
+            print(f"Filtered out {removed_count} error series")
+            print(f"Remaining series: {len(df)}")
     
     # Set random seed
     np.random.seed(random_seed)

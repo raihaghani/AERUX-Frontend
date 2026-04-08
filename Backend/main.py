@@ -12,18 +12,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from constants import LOCATION_LABELS
-from inference_fusion import load_fusion_model
-from infer_single_overlay import (
+from scripts.inference_fusion import load_fusion_model
+from scripts.infer_single_overlay import (
     build_location_prior_heatmap,
     colorize_and_overlay,
 )
-from preprocess_dataset import (
+from scripts.preprocess_dataset import (
     load_dicom_series,
     extract_2_5d_slices,
     resize_volume,
     normalize_volume,
 )
-from data.preprocessing import MRIPreprocessor, CTAPreprocessor
+from src.datasets.preprocessing import MRIPreprocessor, CTAPreprocessor
 
 from dotenv import load_dotenv
 

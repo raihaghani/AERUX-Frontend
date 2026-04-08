@@ -595,7 +595,7 @@ if __name__ == "__main__":
     print(f"✓ CTA Preprocessor created: {type(cta_prep).__name__}")
     
     print("\nTo use in your pipeline:")
-    print("  from data.preprocessing import create_preprocessor")
+    print("  from src.datasets.preprocessing import create_preprocessor")
     print("  preprocessor = create_preprocessor('MRI')")
     print("  result = preprocessor.preprocess(image)")
     print("  preprocessed_image = result['preprocessed']")
