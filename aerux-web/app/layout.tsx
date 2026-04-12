@@ -1,31 +1,36 @@
-import type { Metadata } from "next";
-import { Inter, Poppins } from "next/font/google";
-import "./globals.css";
-import { QueryProvider } from "@/components/providers/QueryProvider";
-import { ChatWidget } from "@/components/chat/ChatWidget";
-import { Navbar } from "@/components/navigation/Navbar";
-import { Footer } from "@/components/navigation/Footer";
-import { PageTransition } from "@/components/motion/PageTransition";
-import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
-import { ScrollToTop } from "@/components/ui/ScrollToTop";
-import { Toaster } from "sonner";
+import type { Metadata } from 'next';
+import { Inter, DM_Serif_Display, DM_Sans } from 'next/font/google';
+import './globals.css';
+import { QueryProvider } from '@/components/providers/QueryProvider';
+import { ChatWidget } from '@/components/chat/ChatWidget';
+import { Navbar } from '@/components/navigation/Navbar';
+import { Footer } from '@/components/navigation/Footer';
+import { PageTransition } from '@/components/motion/PageTransition';
+import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { ScrollToTop } from '@/components/ui/ScrollToTop';
+import { Toaster } from 'sonner';
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
+const dmSerifDisplay = DM_Serif_Display({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-display',
 });
 
-const poppins = Poppins({
-  variable: "--font-poppins",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600'],
+  variable: '--font-sans',
+});
+
+const inter = Inter({
+  variable: '--font-inter',
+  subsets: ['latin'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "AERUX Dashboard",
-  description: "Responsive medical AI dashboard",
+  title: 'AERUX',
+  description: 'AERUX - Deep Learning Medical Analysis',
 };
 
 export default function RootLayout({
@@ -34,8 +39,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`light ${inter.variable} ${poppins.variable}`}>
-      <body className="min-h-screen bg-background text-foreground" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${dmSerifDisplay.variable} ${dmSans.variable} ${inter.variable} min-h-screen bg-[var(--color-surface-1)] text-[var(--color-aerux-navy)]`} suppressHydrationWarning>
         <QueryProvider>
           <div className="relative min-h-screen">
             <Navbar />

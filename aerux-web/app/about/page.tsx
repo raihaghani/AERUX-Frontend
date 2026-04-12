@@ -14,7 +14,7 @@ export default function AboutPage() {
 
   const fadeItem = {
     hidden: { opacity: 0, y: 12 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
   };
 
   const principles = [
@@ -29,7 +29,7 @@ export default function AboutPage() {
       <div className="mx-auto max-w-3xl text-center">
         <h1 className="text-4xl font-bold tracking-tight">About AERUX</h1>
         <p className="mt-4 text-lg text-zinc-700">
-          A multi-modal deep learning framework designed to detect and analyze intracranial aneurysms from medical brain scans, developed at NUCES Islamabad.
+          A multi-modal deep learning framework designed to detect and analyze intracranial aneurysms from medical brain scans.
         </p>
       </div>
 
@@ -37,7 +37,7 @@ export default function AboutPage() {
       <motion.div
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
+        transition={{ duration: 0.6, ease: "easeOut" as const }}
         className="mt-10 rounded-2xl bg-white p-6 ring-1 ring-black/10"
       >
         <div className="flex items-center gap-3">
@@ -76,5 +76,8 @@ export default function AboutPage() {
     </main>
   );
 }
+
+
+
 
 

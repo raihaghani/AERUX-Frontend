@@ -28,8 +28,24 @@ export default function Home() {
             <Brain className="h-12 w-12 text-[color:var(--aerux-navy)]" />
           </motion.div>
 
-          <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl">AERUX</h1>
-          <p className="mt-4 max-w-2xl text-lg text-zinc-700">
+          {/* Behind hero content */}
+          <div
+            className="absolute top-[-120px] left-1/2 -translate-x-1/2 w-[600px] h-[600px]
+                      rounded-full opacity-[0.07] pointer-events-none"
+            style={{
+              background: "radial-gradient(circle, var(--color-aerux-accent) 0%, transparent 70%)",
+              filter: "blur(60px)",
+            }}
+          />
+
+          <h1
+            className="text-5xl md:text-6xl font-bold text-[var(--color-aerux-navy)] leading-[1.1] tracking-tight"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            AI-Assistant.<br />
+            <span className="text-[var(--color-aerux-accent)]">Intracranial Aneurysms.</span>
+          </h1>
+          <p className="mt-4 max-w-2xl text-lg text-zinc-700 relative z-10">
             AI-powered detection of intracranial aneurysms from brain scans
           </p>
 
@@ -38,28 +54,31 @@ export default function Home() {
               href="/upload"
               prefetch
               className={cn(
-                "inline-flex h-12 items-center justify-center rounded-2xl px-6 font-medium text-white",
-                "bg-[color:var(--aerux-accent)] hover:brightness-105 transition shadow-md transform hover:scale-[1.03]"
+                "inline-flex h-11 items-center justify-center rounded-full px-6 font-semibold text-[14px]",
+                "bg-[var(--color-aerux-accent-lt)] text-[var(--color-aerux-navy)] hover:bg-[#DDEBFC] transition-colors shadow-sm"
               )}
             >
               Upload Scan
             </Link>
-            <Link
-              href="/learn"
+            <button
+              onClick={() => {
+                document.getElementById('learn-more-section')?.scrollIntoView({ behavior: 'smooth' });
+              }}
               className={cn(
-                "inline-flex h-12 items-center justify-center rounded-2xl px-6 font-medium",
-                "border border-[color:var(--aerux-navy)] text-[color:var(--aerux-navy)] bg-white/70",
-                "hover:bg-white transition transform hover:scale-[1.03]"
+                "inline-flex h-11 items-center justify-center rounded-full px-6 font-medium text-[14px]",
+                "border border-[var(--color-border)] text-[var(--color-aerux-navy)] bg-white/70",
+                "hover:bg-white transition-colors cursor-pointer"
               )}
             >
               Learn More
-            </Link>
+            </button>
           </div>
         </div>
       </section>
 
       {/* Problem, Solution, Impact */}
       <motion.section
+        id="learn-more-section"
         initial={fadeUp.initial}
         whileInView={fadeUp.animate}
         viewport={{ once: true, amount: 0.2 }}
@@ -80,7 +99,7 @@ export default function Home() {
 
       {/* How AERUX Works */}
       <HowItWorksSection />
-    </main>
+    </main >
   );
 }
 
@@ -99,7 +118,7 @@ function HowItWorksSection() {
 
   const item = {
     hidden: { opacity: 0, y: 14 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
   };
 
   return (
@@ -111,30 +130,30 @@ function HowItWorksSection() {
       className="relative z-10 mx-auto w-full max-w-6xl px-6 pb-20"
     >
       <div className="mx-auto max-w-3xl text-center">
-        <h2 className="text-2xl font-semibold tracking-tight text-[color:var(--aerux-navy)]/90">
+        <h2 className="text-2xl font-semibold tracking-tight text-[var(--color-aerux-navy)]/90">
           How AERUX Works
         </h2>
       </div>
 
       {/* Timeline */}
-      <div className="relative mt-8">
+      <div className="relative mt-8 mt-12 pb-4">
         {/* Base line */}
-        <div className="h-[2px] w-full bg-[color:var(--aerux-blue)]/30" />
+        <div className="h-[2px] w-full bg-[var(--color-aerux-accent-lt)]" />
         {/* Animated progress line */}
         <motion.div
           initial={{ scaleX: 0 }}
           whileInView={{ scaleX: 1 }}
           viewport={{ once: true, amount: 0.3 }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="origin-left absolute inset-y-0 left-0 h-[2px] bg-[color:var(--aerux-blue)]"
+          transition={{ duration: 1, ease: "easeOut" as const }}
+          className="origin-left absolute inset-y-0 left-0 h-[2px] bg-[var(--color-aerux-accent)]"
         />
 
         {/* Steps */}
         <div className="pointer-events-none absolute -top-6 left-0 right-0 flex items-center justify-between">
           {steps.map((s) => (
             <div key={s.id} className="flex flex-col items-center gap-2">
-              <div className="pointer-events-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--aerux-navy)] text-white shadow-md transition hover:brightness-110">
-                <span className="text-2xl font-semibold">{s.id}</span>
+              <div className="pointer-events-auto grid h-12 w-12 place-items-center rounded-full bg-[var(--color-aerux-navy)] text-white shadow-md transition hover:brightness-110">
+                <span className="text-xl font-semibold">{s.id}</span>
               </div>
             </div>
           ))}
@@ -155,10 +174,10 @@ function HowItWorksSection() {
             variants={item}
             className="group rounded-2xl bg-white/80 p-6 ring-1 ring-black/5 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition will-change-transform hover:-translate-y-1 hover:shadow-xl"
           >
-            <h3 className="text-lg font-semibold text-[color:var(--aerux-navy)]">{s.title}</h3>
+            <h3 className="text-lg font-semibold text-[var(--color-aerux-navy)]">{s.title}</h3>
             <p className="mt-3 text-sm leading-6 text-zinc-700">
               {s.id === 1 && "Securely upload CTA, MRA, or MRI (DICOM / NIfTI). Files are de-identified and prepared for analysis."}
-              {s.id === 2 && "AERUX runs multi-modal AI: classification and precise segmentation to detect even small aneurysms."}
+              {s.id === 2 && "AERUX runs multi-modal AI: classification."}
               {s.id === 3 && "Explore results with overlays, heatmaps, and measurements in an interactive, clinician-friendly viewer."}
               {s.id === 4 && "One-click export of a structured diagnostic PDF report with findings and notes."}
             </p>
@@ -247,7 +266,7 @@ function CardsSection() {
 
   const item = {
     hidden: { opacity: 0, y: 14 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
   };
 
   const cards = [
@@ -294,3 +313,5 @@ function CardsSection() {
     </motion.ul>
   );
 }
+
+

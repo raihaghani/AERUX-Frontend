@@ -6,7 +6,7 @@ export const fadeUp = {
 export const fadeUpTransition = (staggerIndex: number = 0) => ({
   duration: 0.6,
   delay: staggerIndex * 0.2,
-  ease: "easeOut",
+  ease: "easeOut" as const,
 });
 
 

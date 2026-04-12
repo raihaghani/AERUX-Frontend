@@ -1,82 +1,256 @@
 @import "tailwindcss";
 
-/* AERUX theme tokens */
-:root {
-  /* palette */
-  --background: #ffffff; /* pure white */
-  --foreground: #0A1448; /* navy text */
-
-  --aerux-navy: #0A1448; /* primary */
-  --aerux-blue: #243B8A; /* legacy secondary-dark */
-  --aerux-accent: #0074D9; /* secondary */
-  --aerux-bg: #F5F7FF;
-  --aerux-white: #ffffff;
-  --text-secondary: #5A5F73;
-
-  /* radius */
-  --radius: 1rem; /* rounded-2xl */
-}
-
 @theme inline {
-  /* colors */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-primary: var(--aerux-navy);
-  --color-secondary: var(--aerux-accent);
-  --color-text-secondary: var(--text-secondary);
-  --color-card: var(--aerux-white);
+    /* ── Brand ── */
+    --color-aerux-navy: #0A1448;
+    --color-aerux-navy-80: rgba(10, 20, 72, 0.8);
+    --color-aerux-accent: #0074D9;
+    --color-aerux-accent-lt: rgba(0, 116, 217, 0.10);
 
-  /* fonts */
-  --font-sans: var(--font-inter);
-  --font-heading: var(--font-poppins);
+    /* ── Risk Spectrum (used in gauges + bars) ── */
+    --color-risk-minimal: #22C55E;
+    --color-risk-low: #3B82F6;
+    --color-risk-moderate: #F59E0B;
+    --color-risk-high: #EF4444;
+    --color-risk-critical: #DC2626;
 
-  /* radius */
-  --radius-2xl: var(--radius);
+    /* ── Neutral Surface ── */
+    --color-surface-0: #ffffff;
+    --color-surface-1: #F5F7FF;
+    --color-surface-2: #EDF0FA;
+    --color-border: rgba(221, 230, 240, 0.8);
+    --color-border-strong: rgba(10, 20, 72, 0.15);
+
+    /* ── Typography ── */
+    --font-display: var(--font-display), 'Georgia', serif;
+    --font-sans: var(--font-sans), 'system-ui', sans-serif;
+    --font-inter: var(--font-inter), 'system-ui', sans-serif;
 }
 
-/* Disable automatic dark-mode color swap; theme is controlled via class toggle */
+:root {
+    /* Maintain specific variable mappings if older components need them */
+    --background: #ffffff;
+    --foreground: #0A1448;
+}
 
 /* Base styles */
-html, body {
-  height: 100%;
+html,
+body {
+    height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  font-weight: 400;
+    background: var(--color-surface-1);
+    color: var(--color-aerux-navy);
+    font-family: var(--font-sans);
+    font-weight: 400;
 }
 
 /* Heading font and weights */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
-  font-weight: 700;
-  color: var(--aerux-navy);
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: var(--color-aerux-navy);
 }
 
-/* Secondary text utility */
-.text-secondary {
-  color: var(--text-secondary);
+/* ── Entrance animations ── */
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-/* Utility: AERUX gradient backgrounds */
-@utility aerux-gradient-primary {
-  background-image: linear-gradient(135deg, var(--aerux-navy), var(--aerux-blue));
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
-@utility aerux-gradient-accent {
-  background-image: linear-gradient(135deg, var(--aerux-accent), #4db8ff);
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
-/* Utility: soft card */
+@keyframes scanLine {
+    0% {
+        top: 6%;
+        opacity: 0;
+    }
+
+    8% {
+        opacity: 1;
+    }
+
+    92% {
+        opacity: 1;
+    }
+
+    100% {
+        top: 94%;
+        opacity: 0;
+    }
+}
+
+@keyframes heartbeat {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    45% {
+        transform: scale(1.4);
+        opacity: 0.7;
+    }
+
+    50% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    55% {
+        transform: scale(1.4);
+        opacity: 0.7;
+    }
+
+    60% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes urgentRing {
+    0% {
+        box-shadow: 0 0 0 0px rgba(220, 38, 38, 0);
+    }
+
+    40% {
+        box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0px rgba(220, 38, 38, 0);
+    }
+}
+
+/* ── Dot grid background — clinical precision ── */
+@utility aerux-dot-grid {
+    background-image: radial-gradient(circle, rgba(180, 196, 216, 0.22) 1px, transparent 1px);
+    background-size: 22px 22px;
+}
+
+/* ── Scan overlay ── */
+.scan-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(6, 13, 27, 0.68);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    overflow: hidden;
+    z-index: 10;
+}
+
+.scan-overlay::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, rgba(0, 116, 217, 0.9) 50%, transparent 100%);
+    animation: scanLine 1.8s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(0, 116, 217, 0.55);
+}
+
+/* ── Status dot ── */
+@utility status-dot-online {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22C55E;
+    animation: heartbeat 2.8s ease infinite;
+    flex-shrink: 0;
+}
+
+/* ── Aerux card — elevated surface ── */
 @utility aerux-card {
-  background-color: var(--aerux-white);
-  border-radius: var(--radius);
-  box-shadow: 0 10px 25px rgba(10, 20, 72, 0.08);
+    background: var(--color-surface-0);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    box-shadow: 0 2px 12px rgba(10, 20, 72, 0.06);
+    transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
 
-/* Utility: soft shadow */
-@utility aerux-shadow {
-  box-shadow: 0 8px 24px rgba(10, 20, 72, 0.12);
+.aerux-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(10, 20, 72, 0.09);
+}
+
+/* ── Glass surface ── */
+@utility aerux-glass {
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(14px) saturate(1.6);
+    -webkit-backdrop-filter: blur(14px) saturate(1.6);
+    border: 1px solid rgba(221, 230, 240, 0.7);
+}
+
+/* ── Animated entrance helpers ── */
+@utility fade-up {
+    animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility slide-in {
+    animation: slideInLeft 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Stagger delays ── */
+@utility delay-1 {
+    animation-delay: 0.05s;
+}
+
+@utility delay-2 {
+    animation-delay: 0.12s;
+}
+
+@utility delay-3 {
+    animation-delay: 0.19s;
+}
+
+@utility delay-4 {
+    animation-delay: 0.26s;
+}
+
+@utility delay-5 {
+    animation-delay: 0.33s;
 }

@@ -27,7 +27,7 @@ export default function ContactPage() {
   ];
 
   const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.12 } } };
-  const item = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } } };
+  const item = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } } };
 
   return (
     <main>
@@ -67,12 +67,13 @@ export default function ContactPage() {
               ))}
             </motion.ul>
 
-            <p className="mt-10 text-center text-xs text-white/70">© 2025–2026 NUCES Islamabad</p>
+            <p className="mt-10 text-center text-xs text-white/70">© 2025–2026 AERUX</p>
           </motion.div>
         </div>
       </section>
     </main>
   );
 }
+
 
 

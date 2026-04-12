@@ -62,6 +62,13 @@ export default function UploadPage() {
   const predictionError = useUIStore((s) => s.predictionError);
   const setPredictionError = useUIStore((s) => s.setPredictionError);
 
+  const patientName = useUIStore((s) => s.patientName);
+  const setPatientName = useUIStore((s) => s.setPatientName);
+  const patientAge = useUIStore((s) => s.patientAge);
+  const setPatientAge = useUIStore((s) => s.setPatientAge);
+  const patientGender = useUIStore((s) => s.patientGender);
+  const setPatientGender = useUIStore((s) => s.setPatientGender);
+
   const [stage, setStage] = useState<ProcessingStage>(null);
   const [fileSize, setFileSize] = useState(0);
   const [elapsed, setElapsed] = useState(0);
@@ -231,7 +238,7 @@ export default function UploadPage() {
   const isProcessing = stage !== null;
 
   return (
-    <main className="relative mx-auto w-full max-w-4xl px-6 py-14">
+    <main className="relative mx-auto w-full max-w-4xl px-6 py-14 min-h-screen aerux-dot-grid bg-[var(--color-surface-1)]">
       <h1 className="text-3xl font-bold tracking-tight">Upload Scan</h1>
       <p className="mt-2 text-zinc-700">
         Analyze a single image or scan a full DICOM series for aneurysm
@@ -240,26 +247,24 @@ export default function UploadPage() {
 
       {/* Mode toggle */}
       {!isProcessing && (
-        <div className="mt-6 inline-flex rounded-xl bg-zinc-100 p-1 ring-1 ring-black/5">
+        <div className="mt-6 inline-flex rounded-xl bg-[var(--color-surface-2)] p-1 ring-1 ring-black/5">
           <button
             type="button"
             onClick={() => setScanMode("single")}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-              scanMode === "single"
-                ? "bg-white text-[color:var(--aerux-navy)] shadow-sm"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${scanMode === "single"
+              ? "bg-white text-[var(--color-aerux-navy)] shadow-sm"
+              : "text-zinc-500 hover:text-zinc-700"
+              }`}
           >
             <FileImage className="h-4 w-4" /> Single Image
           </button>
           <button
             type="button"
             onClick={() => setScanMode("series")}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-              scanMode === "series"
-                ? "bg-white text-[color:var(--aerux-navy)] shadow-sm"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${scanMode === "series"
+              ? "bg-white text-[var(--color-aerux-navy)] shadow-sm"
+              : "text-zinc-500 hover:text-zinc-700"
+              }`}
           >
             <Layers className="h-4 w-4" /> Series Scan
           </button>
@@ -292,108 +297,156 @@ export default function UploadPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.35 }}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            className="mt-6 rounded-2xl bg-white p-8 ring-1 ring-black/10 shadow-sm"
-            style={{
-              boxShadow: isDragging
-                ? "0 0 0 3px rgba(0,116,217,0.3)"
-                : undefined,
-            }}
+            className="mt-6 space-y-6"
           >
-            <div className="flex flex-col items-center justify-center text-center">
-              <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white ring-1 ring-[color:var(--aerux-navy)] text-[color:var(--aerux-navy)] shadow-sm">
-                <Upload className="h-7 w-7" />
-              </span>
+            {/* Patient Context Form */}
+            <div className="rounded-2xl bg-white p-6 ring-1 ring-black/10 shadow-sm flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="mb-1.5 block text-sm font-semibold text-[color:var(--aerux-navy)]">
+                  Patient Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. John Doe / ID-4829"
+                  value={patientName}
+                  onChange={(e) => setPatientName(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-1)] px-4 py-2.5 text-sm outline-none focus:border-[var(--color-aerux-accent)] focus:bg-white focus:ring-2 focus:ring-[var(--color-aerux-accent-lt)]"
+                />
+              </div>
+              <div className="w-full sm:w-28">
+                <label className="mb-1.5 block text-sm font-semibold text-[color:var(--aerux-navy)]">
+                  Age
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 45"
+                  value={patientAge}
+                  onChange={(e) => setPatientAge(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-1)] px-4 py-2.5 text-sm outline-none focus:border-[var(--color-aerux-accent)] focus:bg-white focus:ring-2 focus:ring-[var(--color-aerux-accent-lt)]"
+                />
+              </div>
+              <div className="w-full sm:w-40">
+                <label className="mb-1.5 block text-sm font-semibold text-[color:var(--aerux-navy)]">
+                  Gender
+                </label>
+                <select
+                  value={patientGender}
+                  onChange={(e) => setPatientGender(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-1)] px-4 py-[11px] text-sm outline-none focus:border-[var(--color-aerux-accent)] focus:bg-white focus:ring-2 focus:ring-[var(--color-aerux-accent-lt)]"
+                >
+                  <option value="">Select...</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
 
-              {scanMode === "single" ? (
-                <>
-                  <p className="mt-4 text-lg font-medium text-[color:var(--aerux-navy)]">
-                    Drop or select a medical image
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 mb-3">
-                    Preprocessed (.npy) · DICOM series (.zip) · Single image
-                    (.dcm, .nii, .png, .jpg)
-                  </p>
-                  <p className="mb-4 max-w-lg rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-                    <strong>Tip:</strong> Preprocessed .npy or a full DICOM
-                    series (.zip) give the most accurate results. Single 2D
-                    images (.dcm, .png) lack the multi-slice depth context the
-                    model was trained on.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-4 text-lg font-medium text-[color:var(--aerux-navy)]">
-                    Drop or select a DICOM series archive
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-600 mb-6">
-                    Upload a .zip containing DICOM (.dcm) files for a full
-                    sliding-window scan
-                  </p>
-                </>
-              )}
+            {/* Dropzone */}
+            <div
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              className="rounded-2xl bg-white p-8 ring-1 ring-black/10 shadow-sm transition-shadow"
+              style={{
+                boxShadow: isDragging
+                  ? "0 0 0 3px rgba(0,116,217,0.3)"
+                  : undefined,
+              }}
+            >
+              <div className="flex flex-col items-center justify-center text-center">
+                <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white ring-1 ring-[var(--color-aerux-navy)] text-[var(--color-aerux-navy)] shadow-sm">
+                  <Upload className="h-7 w-7" />
+                </span>
 
-              <div className="flex flex-col items-center gap-4">
-                {scanMode === "series" && (
-                  <div className="flex flex-wrap items-center justify-center gap-4">
-                    <label className="flex items-center gap-2 text-sm text-zinc-700">
-                      <span className="font-medium">Step:</span>
-                      <select
-                        value={step}
-                        onChange={(e) => setStep(Number(e.target.value))}
-                        title="Select window step size"
-                        className="rounded-lg border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-[color:var(--aerux-accent)] bg-white cursor-pointer"
-                      >
-                        <option value={1}>1 (every slice)</option>
-                        <option value={2}>2</option>
-                        <option value={3}>3 (balanced)</option>
-                        <option value={5}>5 (fast)</option>
-                      </select>
-                    </label>
-
-                    <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={fastMode}
-                        onChange={(e) => setFastMode(e.target.checked)}
-                        className="h-4 w-4 rounded border-zinc-300 text-[color:var(--aerux-accent)] focus:ring-[color:var(--aerux-accent)]"
-                      />
-                      <span>
-                        Fast mode{" "}
-                        <span className="text-xs text-zinc-500">
-                          (skip N4 correction)
-                        </span>
-                      </span>
-                    </label>
-                  </div>
+                {scanMode === "single" ? (
+                  <>
+                    <p className="mt-4 text-lg font-medium text-[var(--color-aerux-navy)]">
+                      Drop or select a medical image
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-600 mb-3">
+                      Preprocessed (.npy) · DICOM series (.zip) · Single image
+                      (.dcm, .nii, .png, .jpg)
+                    </p>
+                    <p className="mb-4 max-w-lg rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+                      <strong>Tip:</strong> Preprocessed .npy or a full DICOM
+                      series (.zip) give the most accurate results. Single 2D
+                      images (.dcm, .png) lack the multi-slice depth context the
+                      model was trained on.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-4 text-lg font-medium text-[var(--color-aerux-navy)]">
+                      Drop or select a DICOM series archive
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-600 mb-6">
+                      Upload a .zip containing DICOM (.dcm) files for a full
+                      sliding-window scan
+                    </p>
+                  </>
                 )}
 
-                <div>
-                  <button
-                    type="button"
-                    onClick={onBrowse}
-                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--aerux-accent)] px-6 font-medium text-white shadow transition hover:brightness-105 transform hover:scale-[1.03]"
-                  >
-                    Select File
-                  </button>
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    accept={acceptFilter}
-                    title="Choose a file to upload"
-                    onChange={(e) => handleFiles(e.target.files)}
-                    className="hidden"
-                  />
-                </div>
-              </div>
+                <div className="flex flex-col items-center gap-4">
+                  {scanMode === "series" && (
+                    <div className="flex flex-wrap items-center justify-center gap-4">
+                      <label className="flex items-center gap-2 text-sm text-zinc-700">
+                        <span className="font-medium">Step:</span>
+                        <select
+                          value={step}
+                          onChange={(e) => setStep(Number(e.target.value))}
+                          title="Select window step size"
+                          className="rounded-lg border px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-[var(--color-aerux-accent)] bg-white cursor-pointer"
+                        >
+                          <option value={1}>1 (every slice)</option>
+                          <option value={2}>2</option>
+                          <option value={3}>3 (balanced)</option>
+                          <option value={5}>5 (fast)</option>
+                        </select>
+                      </label>
 
-              {predictionError && (
-                <div className="mt-4 text-sm text-red-500 font-medium">
-                  Error: {predictionError}
+                      <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={fastMode}
+                          onChange={(e) => setFastMode(e.target.checked)}
+                          className="h-4 w-4 rounded border-zinc-300 text-[var(--color-aerux-accent)] focus:ring-[var(--color-aerux-accent)]"
+                        />
+                        <span>
+                          Fast mode{" "}
+                          <span className="text-xs text-zinc-500">
+                            (skip N4 correction)
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
+
+                  <div>
+                    <button
+                      type="button"
+                      onClick={onBrowse}
+                      className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--color-aerux-accent)] px-6 font-medium text-white shadow transition hover:brightness-105 transform hover:scale-[1.03]"
+                    >
+                      Select File
+                    </button>
+                    <input
+                      ref={inputRef}
+                      type="file"
+                      accept={acceptFilter}
+                      title="Choose a file to upload"
+                      onChange={(e) => handleFiles(e.target.files)}
+                      className="hidden"
+                    />
+                  </div>
                 </div>
-              )}
+
+                {predictionError && (
+                  <div className="mt-4 text-sm text-red-500 font-medium">
+                    Error: {predictionError}
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -425,9 +478,9 @@ function ProcessingCard({
     <div className="flex flex-col items-center gap-8">
       {/* File info */}
       <div className="flex items-center gap-3 rounded-xl bg-zinc-50 px-5 py-3 ring-1 ring-black/5">
-        <FileType2 className="h-8 w-8 text-[color:var(--aerux-navy)] shrink-0" />
+        <FileType2 className="h-8 w-8 text-[var(--color-aerux-navy)] shrink-0" />
         <div className="text-left min-w-0">
-          <p className="text-sm font-semibold text-[color:var(--aerux-navy)] truncate max-w-[280px]">
+          <p className="text-sm font-semibold text-[var(--color-aerux-navy)] truncate max-w-[280px]">
             {fileName ?? "file"}
           </p>
           <p className="text-xs text-zinc-500">
@@ -447,8 +500,8 @@ function ProcessingCard({
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${uploadProgress}%` }}
-              transition={{ ease: "easeOut", duration: 0.3 }}
-              className="h-full rounded-full bg-[color:var(--aerux-accent)]"
+              transition={{ ease: "easeOut" as const, duration: 0.3 }}
+              className="h-full rounded-full bg-[var(--color-aerux-accent)]"
             />
           </div>
         </div>
@@ -466,13 +519,12 @@ function ProcessingCard({
               <div key={s.key} className="flex items-center gap-3 py-2">
                 <StepIcon status={status} />
                 <span
-                  className={`text-sm font-medium transition-colors duration-300 ${
-                    status === "done"
-                      ? "text-emerald-600"
-                      : status === "active"
-                        ? "text-[color:var(--aerux-navy)]"
-                        : "text-zinc-400"
-                  }`}
+                  className={`text-sm font-medium transition-colors duration-300 ${status === "done"
+                    ? "text-emerald-600"
+                    : status === "active"
+                      ? "text-[var(--color-aerux-navy)]"
+                      : "text-zinc-400"
+                    }`}
                 >
                   {s.label}
                 </span>
@@ -518,7 +570,10 @@ function StepIcon({ status }: { status: "done" | "active" | "pending" }) {
     );
   }
   if (status === "active") {
-    return <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[color:var(--aerux-accent)]" />;
+    return <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[var(--color-aerux-accent)]" />;
   }
   return <Circle className="h-5 w-5 shrink-0 text-zinc-300" />;
 }
+
+
+

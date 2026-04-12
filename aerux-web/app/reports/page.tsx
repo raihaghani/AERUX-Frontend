@@ -29,11 +29,15 @@ export default function ReportsPage() {
   const modality = useUIStore((s) => s.selectedModality);
   const fileName = useUIStore((s) => s.selectedFileName);
 
+  const patientName = useUIStore((s) => s.patientName);
+  const patientAge = useUIStore((s) => s.patientAge);
+  const patientGender = useUIStore((s) => s.patientGender);
+
   if (seriesResult) {
-    return <SeriesReport result={seriesResult} modality={modality} fileName={fileName} />;
+    return <SeriesReport result={seriesResult} modality={modality} fileName={fileName} patient={{ patientName, patientAge, patientGender }} />;
   }
   if (result) {
-    return <SingleReport result={result} modality={modality} fileName={fileName} />;
+    return <SingleReport result={result} modality={modality} fileName={fileName} patient={{ patientName, patientAge, patientGender }} />;
   }
   return <EmptyReport />;
 }
@@ -47,10 +51,10 @@ function EmptyReport() {
     <main className="relative mx-auto w-full max-w-5xl px-6 py-14">
       <h1 className="text-3xl font-bold tracking-tight">Diagnostic Report</h1>
       <div className="mt-8 grid place-items-center rounded-2xl bg-white p-16 text-center ring-1 ring-black/10 shadow-sm">
-        <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white ring-1 ring-[color:var(--aerux-navy)] text-[color:var(--aerux-navy)] shadow-sm">
+        <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white ring-1 ring-[var(--color-aerux-navy)] text-[var(--color-aerux-navy)] shadow-sm">
           <Upload className="h-7 w-7" />
         </span>
-        <p className="mt-4 text-lg font-medium text-[color:var(--aerux-navy)]">
+        <p className="mt-4 text-lg font-medium text-[var(--color-aerux-navy)]">
           No report available
         </p>
         <p className="mt-1 text-sm text-zinc-600">
@@ -58,7 +62,7 @@ function EmptyReport() {
         </p>
         <Link
           href="/upload"
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-2xl bg-[color:var(--aerux-accent)] px-5 font-medium text-white shadow transition hover:brightness-105"
+          className="mt-6 inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--color-aerux-accent)] px-5 font-medium text-white shadow transition hover:brightness-105 transform hover:scale-[1.03]"
         >
           Go to Upload
         </Link>
@@ -75,10 +79,12 @@ function SingleReport({
   result,
   modality,
   fileName,
+  patient,
 }: {
   result: any;
   modality: string | null;
   fileName: string | null;
+  patient: { patientName: string; patientAge: string; patientGender: string };
 }) {
   const isAneurysm = result.detection_prediction === 1;
   const prob = result.detection_probabilities.aneurysm;
@@ -106,14 +112,14 @@ function SingleReport({
         <div className="flex gap-2">
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-[color:var(--aerux-navy)] shadow-sm ring-1 ring-black/10 hover:bg-zinc-50 transition"
+            className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-[var(--color-aerux-navy)] shadow-sm ring-1 ring-black/10 hover:bg-zinc-50 transition"
           >
             <Printer className="h-4 w-4" /> Print
           </button>
           <button
-            onClick={() => downloadSinglePdf(result, modality, todayDate, fileName, setDownloading)}
+            onClick={() => downloadSinglePdf(result, modality, todayDate, fileName, patient, setDownloading)}
             disabled={downloading}
-            className="inline-flex items-center gap-2 rounded-2xl bg-[color:var(--aerux-navy)] px-4 py-2 text-sm font-medium text-white shadow transition hover:brightness-110 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-aerux-navy)] px-4 py-2 text-sm font-medium text-white shadow transition hover:brightness-110 disabled:opacity-60"
           >
             <Download className="h-4 w-4" />
             {downloading ? "Generating..." : "Download PDF"}
@@ -129,11 +135,10 @@ function SingleReport({
           whileInView={fadeUp.animate}
           viewport={{ once: true }}
           transition={fadeUpTransition(0)}
-          className={`rounded-2xl p-6 shadow ${
-            isAneurysm
-              ? "bg-gradient-to-r from-red-600 to-red-500"
-              : "bg-gradient-to-r from-emerald-600 to-emerald-500"
-          } text-white`}
+          className={`rounded-2xl p-6 shadow ${isAneurysm
+            ? "bg-gradient-to-r from-red-600 to-red-500"
+            : "bg-gradient-to-r from-emerald-600 to-emerald-500"
+            } text-white`}
         >
           <div className="flex items-center gap-3">
             {isAneurysm ? (
@@ -161,10 +166,10 @@ function SingleReport({
           className="grid grid-cols-2 gap-4 sm:grid-cols-4"
         >
           {[
-            { icon: FileText, label: "Patient ID", value: `P-${result.result_id?.toUpperCase() || "00000"}` },
+            { icon: FileText, label: "Patient", value: patient.patientName || `P-${result.result_id?.toUpperCase().slice(0, 5) || "00000"}` },
+            { icon: Activity, label: "Age / Sex", value: `${patient.patientAge || "U"} / ${patient.patientGender ? patient.patientGender.charAt(0) : "U"}` },
             { icon: Clock, label: "Report Date", value: todayDate },
             { icon: Activity, label: "Modality", value: modality || "Auto-detected" },
-            { icon: Clock, label: "Processing", value: `${result.processing_time_ms} ms` },
           ].map((m, i) => (
             <div
               key={i}
@@ -174,7 +179,7 @@ function SingleReport({
                 <m.icon className="h-3.5 w-3.5" />
                 <span className="text-xs font-medium uppercase tracking-wider">{m.label}</span>
               </div>
-              <p className="text-sm font-bold text-[color:var(--aerux-navy)] truncate">
+              <p className="text-sm font-bold text-[var(--color-aerux-navy)] truncate">
                 {m.value}
               </p>
             </div>
@@ -189,7 +194,7 @@ function SingleReport({
           transition={fadeUpTransition(0.1)}
           className="rounded-2xl bg-white p-6 ring-1 ring-black/5 shadow-sm"
         >
-          <h3 className="text-lg font-bold text-[color:var(--aerux-navy)] mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-[var(--color-aerux-navy)] mb-4 flex items-center gap-2">
             <Shield className="h-5 w-5" /> Scan Imaging
           </h3>
 
@@ -225,7 +230,7 @@ function SingleReport({
           transition={fadeUpTransition(0.15)}
           className="rounded-2xl bg-white p-6 ring-1 ring-black/5 shadow-sm"
         >
-          <h3 className="text-lg font-bold text-[color:var(--aerux-navy)] mb-1 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-[var(--color-aerux-navy)] mb-1 flex items-center gap-2">
             <MapPin className="h-5 w-5" /> Location Assessment
           </h3>
           <p className="text-sm text-zinc-500 mb-5">
@@ -238,9 +243,8 @@ function SingleReport({
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-zinc-700">{label}</span>
                   <span
-                    className={`text-xs font-bold ${
-                      prob > 0.5 ? "text-red-600" : "text-[color:var(--aerux-navy)]"
-                    }`}
+                    className={`text-xs font-bold ${prob > 0.5 ? "text-red-600" : "text-[var(--color-aerux-navy)]"
+                      }`}
                   >
                     {(prob * 100).toFixed(1)}%
                   </span>
@@ -250,10 +254,9 @@ function SingleReport({
                     initial={{ width: 0 }}
                     whileInView={{ width: `${prob * 100}%` }}
                     viewport={{ once: true }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    className={`h-full rounded-full ${
-                      prob > 0.5 ? "bg-red-500" : "bg-[color:var(--aerux-accent)]"
-                    }`}
+                    transition={{ duration: 0.8, ease: "easeOut" as const }}
+                    className={`h-full rounded-full ${prob > 0.5 ? "bg-red-500" : "bg-[var(--color-aerux-accent)]"
+                      }`}
                   />
                 </div>
               </div>
@@ -269,7 +272,7 @@ function SingleReport({
           transition={fadeUpTransition(0.2)}
           className="rounded-2xl bg-white p-6 ring-1 ring-black/5 shadow-sm"
         >
-          <h3 className="text-lg font-bold text-[color:var(--aerux-navy)] mb-3">
+          <h3 className="text-lg font-bold text-[var(--color-aerux-navy)] mb-3">
             Clinical Summary
           </h3>
           <div className="text-sm text-zinc-700 leading-relaxed space-y-2">
@@ -301,10 +304,12 @@ function SeriesReport({
   result,
   modality,
   fileName,
+  patient,
 }: {
   result: SeriesResult;
   modality: string | null;
   fileName: string | null;
+  patient: { patientName: string; patientAge: string; patientGender: string };
 }) {
   const anyFlagged = result.flagged_windows > 0;
   const topWindow = result.top_results[0];
@@ -330,16 +335,16 @@ function SeriesReport({
         <div className="flex gap-2">
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-[color:var(--aerux-navy)] shadow-sm ring-1 ring-black/10 hover:bg-zinc-50 transition"
+            className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-[var(--color-aerux-navy)] shadow-sm ring-1 ring-black/10 hover:bg-zinc-50 transition"
           >
             <Printer className="h-4 w-4" /> Print
           </button>
           <button
             onClick={() =>
-              downloadSeriesPdf(result, modality, todayDate, fileName, setDownloading)
+              downloadSeriesPdf(result, modality, todayDate, fileName, patient, setDownloading)
             }
             disabled={downloading}
-            className="inline-flex items-center gap-2 rounded-2xl bg-[color:var(--aerux-navy)] px-4 py-2 text-sm font-medium text-white shadow transition hover:brightness-110 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-aerux-navy)] px-4 py-2 text-sm font-medium text-white shadow transition hover:brightness-110 disabled:opacity-60"
           >
             <Download className="h-4 w-4" />
             {downloading ? "Generating..." : "Download PDF"}
@@ -354,11 +359,10 @@ function SeriesReport({
           whileInView={fadeUp.animate}
           viewport={{ once: true }}
           transition={fadeUpTransition(0)}
-          className={`rounded-2xl p-6 shadow ${
-            anyFlagged
-              ? "bg-gradient-to-r from-red-600 to-red-500"
-              : "bg-gradient-to-r from-emerald-600 to-emerald-500"
-          } text-white`}
+          className={`rounded-2xl p-6 shadow ${anyFlagged
+            ? "bg-gradient-to-r from-red-600 to-red-500"
+            : "bg-gradient-to-r from-emerald-600 to-emerald-500"
+            } text-white`}
         >
           <div className="flex items-center gap-3">
             {anyFlagged ? <AlertCircle className="h-7 w-7 shrink-0" /> : <CheckCircle2 className="h-7 w-7 shrink-0" />}
@@ -384,21 +388,20 @@ function SeriesReport({
           className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
         >
           {[
-            { label: "Patient ID", value: `P-${result.result_id?.toUpperCase() || "00000"}` },
-            { label: "Report Date", value: todayDate.split(",")[0] },
-            { label: "Total Slices", value: String(result.total_slices) },
-            { label: "Windows", value: String(result.total_windows) },
+            { label: "Patient", value: patient.patientName || `P-${result.result_id?.toUpperCase().slice(0, 5) || "000"}` },
+            { label: "Age / Sex", value: `${patient.patientAge || "U"} / ${patient.patientGender ? patient.patientGender.charAt(0) : "U"}` },
+            { label: "Date", value: todayDate.split(",")[0] },
+            { label: "Slices", value: String(result.total_slices) },
             { label: "Flagged", value: String(result.flagged_windows) },
-            { label: "Processing", value: `${(result.processing_time_ms / 1000).toFixed(1)}s` },
+            { label: "Time", value: `${(result.processing_time_ms / 1000).toFixed(1)}s` },
           ].map((m, i) => (
             <div
               key={i}
-              className={`rounded-xl bg-white p-4 ring-1 ring-black/5 shadow-sm ${
-                m.label === "Flagged" && anyFlagged ? "border-l-4 border-l-red-500" : ""
-              }`}
+              className={`rounded-xl bg-white p-4 ring-1 ring-black/5 shadow-sm ${m.label === "Flagged" && anyFlagged ? "border-l-4 border-l-red-500" : ""
+                }`}
             >
               <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">{m.label}</p>
-              <p className="mt-1 text-sm font-bold text-[color:var(--aerux-navy)]">{m.value}</p>
+              <p className="mt-1 text-sm font-bold text-[var(--color-aerux-navy)]">{m.value}</p>
             </div>
           ))}
         </motion.div>
@@ -412,7 +415,7 @@ function SeriesReport({
             transition={fadeUpTransition(0.1)}
             className="rounded-2xl bg-white p-6 ring-1 ring-black/5 shadow-sm"
           >
-            <h3 className="text-lg font-bold text-[color:var(--aerux-navy)] mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-[var(--color-aerux-navy)] mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5" /> Top Suspicious Windows
             </h3>
 
@@ -424,13 +427,12 @@ function SeriesReport({
                   <button
                     key={i}
                     onClick={() => setSelectedIdx(i)}
-                    className={`flex-shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition ring-1 ${
-                      selectedIdx === i
-                        ? "bg-[color:var(--aerux-navy)] text-white ring-[color:var(--aerux-navy)]"
-                        : det
-                          ? "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"
-                          : "bg-zinc-50 text-zinc-700 ring-zinc-200 hover:bg-zinc-100"
-                    }`}
+                    className={`flex-shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition ring-1 ${selectedIdx === i
+                      ? "bg-[var(--color-aerux-navy)] text-white ring-[var(--color-aerux-navy)]"
+                      : det
+                        ? "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"
+                        : "bg-zinc-50 text-zinc-700 ring-zinc-200 hover:bg-zinc-100"
+                      }`}
                   >
                     Slice {tr.center_slice}
                     <span className="ml-1 text-xs opacity-70">
@@ -478,7 +480,7 @@ function SeriesReport({
             transition={fadeUpTransition(0.15)}
             className="rounded-2xl bg-white p-6 ring-1 ring-black/5 shadow-sm"
           >
-            <h3 className="text-lg font-bold text-[color:var(--aerux-navy)] mb-1 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-[var(--color-aerux-navy)] mb-1 flex items-center gap-2">
               <MapPin className="h-5 w-5" /> Location Assessment
               <span className="text-sm font-normal text-zinc-500">
                 (Top window — Slice {topWindow.center_slice})
@@ -498,9 +500,8 @@ function SeriesReport({
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-zinc-700">{label}</span>
                     <span
-                      className={`text-xs font-bold ${
-                        p > 0.5 ? "text-red-600" : "text-[color:var(--aerux-navy)]"
-                      }`}
+                      className={`text-xs font-bold ${p > 0.5 ? "text-red-600" : "text-[var(--color-aerux-navy)]"
+                        }`}
                     >
                       {(p * 100).toFixed(1)}%
                     </span>
@@ -510,10 +511,9 @@ function SeriesReport({
                       initial={{ width: 0 }}
                       whileInView={{ width: `${p * 100}%` }}
                       viewport={{ once: true }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className={`h-full rounded-full ${
-                        p > 0.5 ? "bg-red-500" : "bg-[color:var(--aerux-accent)]"
-                      }`}
+                      transition={{ duration: 0.8, ease: "easeOut" as const }}
+                      className={`h-full rounded-full ${p > 0.5 ? "bg-red-500" : "bg-[var(--color-aerux-accent)]"
+                        }`}
                     />
                   </div>
                 </div>
@@ -530,7 +530,7 @@ function SeriesReport({
           transition={fadeUpTransition(0.2)}
           className="rounded-2xl bg-white p-6 ring-1 ring-black/5 shadow-sm"
         >
-          <h3 className="text-lg font-bold text-[color:var(--aerux-navy)] mb-3">
+          <h3 className="text-lg font-bold text-[var(--color-aerux-navy)] mb-3">
             Clinical Summary
           </h3>
           <div className="text-sm text-zinc-700 leading-relaxed space-y-2">
@@ -567,7 +567,7 @@ function SeriesReport({
 function ImageCard({ label, sublabel, src }: { label: string; sublabel: string; src: string }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
-      <p className="text-sm font-semibold text-[color:var(--aerux-navy)]">{label}</p>
+      <p className="text-sm font-semibold text-[var(--color-aerux-navy)]">{label}</p>
       <p className="text-xs text-zinc-500 mb-2">{sublabel}</p>
       <img
         src={src}
@@ -638,8 +638,7 @@ async function downloadSinglePdf(
   result: any,
   modality: string | null,
   date: string,
-  fileName: string | null,
-  setLoading: (v: boolean) => void,
+  fileName: string | null, patient: { patientName: string; patientAge: string; patientGender: string }, setLoading: (v: boolean) => void,
 ) {
   setLoading(true);
   try {
@@ -674,9 +673,10 @@ async function downloadSinglePdf(
     y -= 20;
 
     const meta = [
-      `Patient ID: P-${result.result_id?.toUpperCase() || "00000"}`,
+      `Patient Name: ${patient.patientName || `P-${result.result_id?.toUpperCase().slice(0, 5) || "00000"}`}`,
+      `Age/Sex: ${patient.patientAge || "U"}/${patient.patientGender ? patient.patientGender.charAt(0) : "U"}`,
       `Date: ${date}`,
-      `Modality: ${modality || "Auto-detected"}`,
+      `Modality: ${modality || "Auto"}`,
       `File: ${fileName || "N/A"}`,
     ];
     p1.drawText(meta.join("   |   "), { x: 50, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
@@ -735,13 +735,13 @@ async function downloadSinglePdf(
     y2 = drawSectionTitle(p2, font, boldFont, "Clinical Summary", y2);
     const summaryLines = isAneurysm
       ? [
-          `AI analysis detected a potential intracranial aneurysm with ${(prob * 100).toFixed(1)}% confidence.`,
-          `Most probable location: ${locs[0]?.[0] || "Unknown"} (${((locs[0]?.[1] ?? 0) * 100).toFixed(1)}%).`,
-        ]
+        `AI analysis detected a potential intracranial aneurysm with ${(prob * 100).toFixed(1)}% confidence.`,
+        `Most probable location: ${locs[0]?.[0] || "Unknown"} (${((locs[0]?.[1] ?? 0) * 100).toFixed(1)}%).`,
+      ]
       : [
-          `AI analysis did not detect an intracranial aneurysm (confidence: ${(prob * 100).toFixed(1)}%).`,
-          `Highest location probability: ${locs[0]?.[0] || "Unknown"} (${((locs[0]?.[1] ?? 0) * 100).toFixed(1)}%).`,
-        ];
+        `AI analysis did not detect an intracranial aneurysm (confidence: ${(prob * 100).toFixed(1)}%).`,
+        `Highest location probability: ${locs[0]?.[0] || "Unknown"} (${((locs[0]?.[1] ?? 0) * 100).toFixed(1)}%).`,
+      ];
     for (const line of summaryLines) {
       p2.drawText(line, { x: 60, y: y2, size: 9, font, color: rgb(0.2, 0.2, 0.2) });
       y2 -= 16;
@@ -765,6 +765,7 @@ async function downloadSeriesPdf(
   modality: string | null,
   date: string,
   fileName: string | null,
+  patient: { patientName: string; patientAge: string; patientGender: string },
   setLoading: (v: boolean) => void,
 ) {
   setLoading(true);
@@ -807,12 +808,12 @@ async function downloadSeriesPdf(
     y -= 20;
 
     const meta = [
-      `Patient: P-${result.result_id?.toUpperCase() || "00000"}`,
+      `Patient Name: ${patient.patientName || `P-${result.result_id?.toUpperCase().slice(0, 5) || "00000"}`}`,
+      `Age/Sex: ${patient.patientAge || "U"}/${patient.patientGender ? patient.patientGender.charAt(0) : "U"}`,
       `Date: ${date}`,
       `Modality: ${modality || "Auto"}`,
       `Slices: ${result.total_slices}`,
       `Windows: ${result.total_windows}`,
-      `Step: ${result.step}`,
     ];
     p1.drawText(meta.join("  |  "), { x: 50, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 16;
@@ -877,13 +878,13 @@ async function downloadSeriesPdf(
     y2 = drawSectionTitle(p2, font, boldFont, "Clinical Summary", y2);
     const lines = anyFlagged
       ? [
-          `Series scan: ${result.total_slices} slices, ${result.flagged_windows} flagged window(s).`,
-          `Peak confidence: ${(result.max_aneurysm_prob * 100).toFixed(1)}% at slice ${topW?.center_slice ?? "N/A"}.`,
-        ]
+        `Series scan: ${result.total_slices} slices, ${result.flagged_windows} flagged window(s).`,
+        `Peak confidence: ${(result.max_aneurysm_prob * 100).toFixed(1)}% at slice ${topW?.center_slice ?? "N/A"}.`,
+      ]
       : [
-          `Series scan: ${result.total_slices} slices, no windows exceeded 50% threshold.`,
-          `Highest probability: ${(result.max_aneurysm_prob * 100).toFixed(1)}%.`,
-        ];
+        `Series scan: ${result.total_slices} slices, no windows exceeded 50% threshold.`,
+        `Highest probability: ${(result.max_aneurysm_prob * 100).toFixed(1)}%.`,
+      ];
     for (const l of lines) {
       p2.drawText(l, { x: 60, y: y2, size: 9, font, color: rgb(0.2, 0.2, 0.2) });
       y2 -= 16;
@@ -903,7 +904,7 @@ async function downloadSeriesPdf(
 }
 
 function triggerDownload(bytes: Uint8Array, filename: string) {
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -911,3 +912,7 @@ function triggerDownload(bytes: Uint8Array, filename: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+
+
+
