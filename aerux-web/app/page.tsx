@@ -42,8 +42,8 @@ export default function Home() {
             className="text-5xl md:text-6xl font-bold text-[var(--color-aerux-navy)] leading-[1.1] tracking-tight"
             style={{ fontFamily: "var(--font-display)" }}
           >
-            AI-Assistant.<br />
-            <span className="text-[var(--color-aerux-accent)]">Intracranial Aneurysms.</span>
+            AI-Assisted<br />
+            <span className="text-[var(--color-aerux-accent)]">Intracranial Aneurysm Detection</span>
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-zinc-700 relative z-10">
             AI-powered detection of intracranial aneurysms from brain scans
@@ -107,7 +107,7 @@ function HowItWorksSection() {
   const steps = [
     { id: 1, title: "Upload Scan" },
     { id: 2, title: "AI Analysis" },
-    { id: 3, title: "Interactive Viewer" },
+    { id: 3, title: "Visualizations" },
     { id: 4, title: "Export Report" },
   ];
 
@@ -178,7 +178,7 @@ function HowItWorksSection() {
             <p className="mt-3 text-sm leading-6 text-zinc-700">
               {s.id === 1 && "Securely upload CTA, MRA, or MRI (DICOM / NIfTI). Files are de-identified and prepared for analysis."}
               {s.id === 2 && "AERUX runs multi-modal AI: classification."}
-              {s.id === 3 && "Explore results with overlays, heatmaps, and measurements in an interactive, clinician-friendly viewer."}
+              {s.id === 3 && "Explore results with overlays, heatmaps, and measurements in a clinician-friendly viewer."}
               {s.id === 4 && "One-click export of a structured diagnostic PDF report with findings and notes."}
             </p>
             <div className="mt-4 h-0.5 w-12 origin-left bg-[color:var(--aerux-blue)]/50 transition group-hover:scale-x-110 group-hover:bg-[color:var(--aerux-navy)]" />

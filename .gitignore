@@ -40,3 +40,5 @@ Backend/models/
 *.njsproj
 *.sln
 *.sw?
+review.pdf
+Papers/

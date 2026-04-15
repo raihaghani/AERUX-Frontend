@@ -83,11 +83,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AERUX ML API", version="1.0.0", lifespan=lifespan)
 
-# CORS: allow only the Next.js server
+# CORS: allow only the Next.js server (now allowing * for ngrok external access)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_methods=["POST", "GET"],
+    allow_origins=["*"],
+    allow_methods=["POST", "GET", "OPTIONS", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 

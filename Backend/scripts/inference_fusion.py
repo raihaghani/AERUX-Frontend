@@ -43,17 +43,27 @@ def load_fusion_model(checkpoint_path, device):
     
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
+    outputs_dir = os.path.dirname(os.path.dirname(checkpoint_path))
     # Extract model paths from checkpoint if available
     if 'config' in checkpoint and 'checkpoint_paths' in checkpoint['config']:
         modality_checkpoints = checkpoint['config']['checkpoint_paths']
+        for mod, path in modality_checkpoints.items():
+            if 'Aerux_Final' in path: 
+                base_name = os.path.basename(os.path.dirname(path))
+                file_name = os.path.basename(path)
+                modality_checkpoints[mod] = os.path.join(outputs_dir, base_name, file_name)
     else:
         # Try to find them automatically
         print("WARNING: Model paths not in checkpoint, attempting auto-detection...")
         import glob
         modality_checkpoints = {}
         for modality in ['CTA', 'MRA', 'MRI']:
-            pattern = f"E:/Education/Aerux_Final/outputs/multitask_{modality}_*/best_model_{modality}.pth"
+            pattern = os.path.join(outputs_dir, f"multitask_{modality}_*", f"best_model_{modality}.pth")
             found = glob.glob(pattern)
+            if not found:
+                pattern = os.path.join(outputs_dir, f"multitask_{modality}_*", f"final_model_{modality}.pth")
+                found = glob.glob(pattern)
+                
             if found:
                 found.sort(key=os.path.getmtime, reverse=True)
                 modality_checkpoints[modality] = found[0]
