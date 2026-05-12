@@ -754,6 +754,21 @@ async def predict_series(
     # ── Sliding-window scan (thread pool) ──────────────────────────────────
     out_dir = OUTPUT_DIR / result_id
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save arrays for on-demand slice details
+    np.save(out_dir / "preprocessed.npy", preprocessed)
+    np.save(out_dir / "raw_resized.npy", raw_resized)
+    
+    scan_params = {
+        "modality": effective_mod,
+        "step": step,
+        "sigma": sigma,
+        "alpha": alpha,
+        "threshold": threshold,
+        "use_detection_weight": use_detection_weight
+    }
+    (out_dir / "scan_params.json").write_text(json.dumps(scan_params))
+
     try:
         slice_results, top_results = await loop.run_in_executor(
             None, _series_scan_sync,
@@ -806,3 +821,85 @@ def get_result(result_id: str):
     if not json_path.exists():
         raise HTTPException(404, "Result not found")
     return json.loads(json_path.read_text())
+
+
+def _generate_single_slice_overlay(
+    preprocessed: np.ndarray,
+    raw_resized: np.ndarray,
+    center_slice: int,
+    modality: str,
+    sigma: float,
+    alpha: float,
+    threshold: float,
+    use_detection_weight: bool,
+    out_dir: Path,
+    result_id: str,
+):
+    vol_7ch, display = _build_window(preprocessed, raw_resized, center_slice)
+    (
+        det_probs, loc_probs, det_pred, loc_weights,
+        heat_uint8, binary_mask, heat_color, overlay,
+    ) = _run_inference_sync(
+        vol_7ch, display, modality,
+        sigma, alpha, threshold, use_detection_weight,
+    )
+
+    prefix = f"window_{center_slice}"
+    cv2.imwrite(str(out_dir / f"{prefix}_overlay.png"),        overlay)
+    cv2.imwrite(str(out_dir / f"{prefix}_heatmap.png"),        heat_color)
+    cv2.imwrite(str(out_dir / f"{prefix}_input_gray.png"),     display)
+    cv2.imwrite(str(out_dir / f"{prefix}_highlight_mask.png"), binary_mask)
+
+    top3 = sorted(loc_weights.items(), key=lambda x: x[1], reverse=True)[:3]
+
+    return {
+        "center_slice": int(center_slice),
+        "detection_prediction": det_pred,
+        "detection_probabilities": {
+            "no_aneurysm": round(float(det_probs[0]), 4),
+            "aneurysm":    round(float(det_probs[1]), 4),
+        },
+        "top_3_locations": [
+            {"label": label, "score": round(float(score), 4)}
+            for label, score in top3
+        ],
+        "all_location_probabilities": {
+            LOCATION_LABELS[i]: round(float(loc_probs[i]), 4) for i in range(13)
+        },
+        "image_urls": {
+            "overlay":        f"/results/{result_id}/{prefix}_overlay.png",
+            "heatmap":        f"/results/{result_id}/{prefix}_heatmap.png",
+            "input_gray":     f"/results/{result_id}/{prefix}_input_gray.png",
+            "highlight_mask": f"/results/{result_id}/{prefix}_highlight_mask.png",
+        },
+    }
+
+@app.get("/slice_details/{result_id}/{center_slice}")
+async def get_slice_details(result_id: str, center_slice: int):
+    out_dir = OUTPUT_DIR / result_id
+    if not out_dir.exists():
+        raise HTTPException(404, "Result session not found or expired")
+
+    try:
+        preprocessed = np.load(out_dir / "preprocessed.npy")
+        raw_resized = np.load(out_dir / "raw_resized.npy")
+        params = json.loads((out_dir / "scan_params.json").read_text())
+    except Exception:
+        raise HTTPException(404, "Cached volume data not found. Please re-upload.")
+
+    if center_slice < 0 or center_slice >= preprocessed.shape[0]:
+        raise HTTPException(400, "Slice index out of bounds")
+
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(
+            None,
+            _generate_single_slice_overlay,
+            preprocessed, raw_resized, center_slice,
+            params["modality"], params["sigma"], params["alpha"],
+            params["threshold"], params["use_detection_weight"],
+            out_dir, result_id
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"Slice detail generation failed: {e}")

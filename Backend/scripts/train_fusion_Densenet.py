@@ -299,10 +299,24 @@ class SimpleFusionModel(nn.Module):
         # Feature dimension from DenseNet121 backbone (1024-d bottleneck after global avg pool)
         feature_dim = 1024
         
-        # Multi-head attention for learning modality importance
-        self.attention_query = nn.Linear(feature_dim, 256)
-        self.attention_key = nn.Linear(feature_dim, 256)
-        self.attention_value = nn.Linear(feature_dim, 256)
+        # Advanced Gated Feature Refinement (Current Best Research Practice)
+        # Replaces faulty batch-wise attention with LayerNorm, GELU, and Channel Attention
+        self.feature_projection = nn.Sequential(
+            nn.Linear(feature_dim, 512),
+            nn.LayerNorm(512),
+            nn.GELU(),
+            nn.Dropout(0.4),
+            nn.Linear(512, 256),
+            nn.LayerNorm(256)
+        )
+        
+        # Channel-wise Attention (Squeeze-and-Excitation style)
+        self.channel_attention = nn.Sequential(
+            nn.Linear(256, 64),
+            nn.GELU(),
+            nn.Linear(64, 256),
+            nn.Sigmoid()
+        )
         
         # Attention combination layers for each task
         self.detection_fusion = nn.Sequential(
@@ -404,15 +418,14 @@ class SimpleFusionModel(nn.Module):
                 features = features.detach()
                 features.requires_grad = True
                 
-                # Apply attention mechanism (these layers are trainable)
-                queries = self.attention_query(features)  # [B, 256]
-                keys = self.attention_key(features)  # [B, 256]
-                values = self.attention_value(features)  # [B, 256]
+                # Apply advanced feature projection
+                proj_features = self.feature_projection(features)  # [B, 256]
                 
-                # Compute attention scores (scaled dot-product attention)
-                attention_scores = torch.matmul(queries, keys.transpose(-2, -1)) / (256 ** 0.5)
-                attention_weights = F.softmax(attention_scores, dim=-1)
-                attended_features = torch.matmul(attention_weights, values)  # [B, 256]
+                # Compute channel-wise attention weights
+                attention_weights = self.channel_attention(proj_features)  # [B, 256]
+                
+                # Gate the features (Squeeze-and-Excitation style)
+                attended_features = proj_features * attention_weights  # [B, 256]
                 
                 # Generate task-specific predictions from attended features
                 det_logits = self.detection_fusion(attended_features)

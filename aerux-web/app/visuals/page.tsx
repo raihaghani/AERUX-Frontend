@@ -132,6 +132,7 @@ function ResultsSection({ result, modality }: { result: any; modality: string | 
           <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scroll">
             {Object.entries(result.all_location_probabilities)
               .sort(([, a], [, b]) => (b as number) - (a as number))
+              .slice(0, 3)
               .map(([label, prob]: [string, any]) => (
                 <div key={label} className="flex flex-col gap-1.5 border-b border-zinc-50 pb-3 last:border-0 last:pb-0">
                   <div className="flex items-center justify-between">
@@ -198,7 +199,12 @@ function SeriesResultsSection({
   result: SeriesResult;
   modality: string | null;
 }) {
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  const selectedSlice = useUIStore((s) => s.selectedSeriesSlice);
+  const setSelectedSlice = useUIStore((s) => s.setSelectedSeriesSlice);
+  const dynamicSlices = useUIStore((s) => s.dynamicSlices);
+  const setDynamicSlices = useUIStore((s) => s.setDynamicSlices);
+  const [loadingSlice, setLoadingSlice] = useState(false);
+  
   const anyFlagged = result.flagged_windows > 0;
 
   const stats = [
@@ -219,7 +225,33 @@ function SeriesResultsSection({
     show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
   };
 
-  const selected = result.top_results[selectedIdx];
+  const handleSelectSlice = async (slice: number) => {
+    if (slice === selectedSlice) return;
+    setSelectedSlice(slice);
+
+    const isInTopResults = result.top_results.some((tr) => tr.center_slice === slice);
+    if (isInTopResults || dynamicSlices[slice]) {
+      return;
+    }
+
+    setLoadingSlice(true);
+    try {
+      const res = await fetch(`/api/slice-details?result_id=${result.result_id}&center_slice=${slice}`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch slice details");
+      }
+      const data = await res.json();
+      setDynamicSlices((prev) => ({ ...prev, [slice]: data }));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingSlice(false);
+    }
+  };
+
+  const selectedData =
+    result.top_results.find((tr) => tr.center_slice === selectedSlice) ||
+    (selectedSlice !== null ? dynamicSlices[selectedSlice] : null);
 
   return (
     <main className="relative mx-auto w-full max-w-6xl px-6 py-14">
@@ -286,7 +318,11 @@ function SeriesResultsSection({
       </motion.ul>
 
       {/* Scan profile */}
-      <ScanProfile sliceResults={result.slice_results} />
+      <ScanProfile 
+        sliceResults={result.slice_results} 
+        selectedSlice={selectedSlice}
+        onSliceSelect={handleSelectSlice}
+      />
 
       {/* Top suspicious windows */}
       {result.top_results.length > 0 && (
@@ -302,9 +338,9 @@ function SeriesResultsSection({
               return (
                 <button
                   key={i}
-                  onClick={() => setSelectedIdx(i)}
+                  onClick={() => handleSelectSlice(tr.center_slice)}
                   className={`flex-shrink-0 rounded-xl px-4 py-2 text-sm font-medium transition ring-1 ${
-                    selectedIdx === i
+                    selectedSlice === tr.center_slice
                       ? "bg-[var(--color-aerux-navy)] text-white ring-[var(--color-aerux-navy)]"
                       : isAneurysm
                         ? "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"
@@ -321,7 +357,14 @@ function SeriesResultsSection({
           </div>
 
           {/* Detail view for selected window */}
-          {selected && <WindowDetail result={selected} />}
+          {loadingSlice ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--color-aerux-navy)] border-t-transparent" />
+              <span className="ml-3 text-zinc-600 font-medium">Generating AI overlays for slice {selectedSlice}...</span>
+            </div>
+          ) : selectedData ? (
+            <WindowDetail result={selectedData} />
+          ) : null}
         </div>
       )}
     </main>
@@ -330,7 +373,15 @@ function SeriesResultsSection({
 
 /* ── Scan profile chart ────────────────────────────────────────────────────── */
 
-function ScanProfile({ sliceResults }: { sliceResults: SeriesSliceResult[] }) {
+function ScanProfile({ 
+  sliceResults,
+  selectedSlice,
+  onSliceSelect
+}: { 
+  sliceResults: SeriesSliceResult[];
+  selectedSlice: number | null;
+  onSliceSelect: (slice: number) => void;
+}) {
   if (sliceResults.length === 0) return null;
 
   const chartHeight = 100;
@@ -366,7 +417,10 @@ function ScanProfile({ sliceResults }: { sliceResults: SeriesSliceResult[] }) {
                 key={i}
                 title={`Slice ${r.center_slice}: ${(r.aneurysm_prob * 100).toFixed(1)}%`}
                 style={{ width: `${barWidth}px`, height: `${h}px` }}
-                className={`rounded-t-sm ${bg} flex-shrink-0 cursor-pointer transition-opacity hover:opacity-75`}
+                onClick={() => onSliceSelect(r.center_slice)}
+                className={`rounded-t-sm ${bg} flex-shrink-0 cursor-pointer transition-all hover:opacity-100 ${
+                  r.center_slice === selectedSlice ? "ring-2 ring-zinc-800 ring-offset-1 z-10 opacity-100 scale-y-105" : "opacity-80"
+                }`}
               />
             );
           })}
@@ -445,6 +499,7 @@ function WindowDetail({ result }: { result: SeriesTopResult }) {
         <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-2">
           {Object.entries(result.all_location_probabilities)
             .sort(([, a], [, b]) => b - a)
+            .slice(0, 3)
             .map(([label, prob]) => (
               <div key={label} className="flex flex-col gap-1.5 border-b border-zinc-50 pb-2 last:border-0 last:pb-0">
                 <div className="flex items-center justify-between">

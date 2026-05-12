@@ -60,6 +60,9 @@ type UIState = {
   patientAge: string;
   patientGender: string;
 
+  selectedSeriesSlice: number | null;
+  dynamicSlices: Record<number, SeriesTopResult>;
+
   setUploadProgress: (value: number) => void;
   setSelectedFileName: (name: string | null) => void;
   setLoading: (value: boolean) => void;
@@ -74,6 +77,9 @@ type UIState = {
   setPatientName: (name: string) => void;
   setPatientAge: (age: string) => void;
   setPatientGender: (gender: string) => void;
+
+  setSelectedSeriesSlice: (slice: number | null) => void;
+  setDynamicSlices: (slices: Record<number, SeriesTopResult> | ((prev: Record<number, SeriesTopResult>) => Record<number, SeriesTopResult>)) => void;
 };
 
 export const useUIStore = create<UIState>((set) => ({
@@ -90,6 +96,9 @@ export const useUIStore = create<UIState>((set) => ({
   patientAge: "",
   patientGender: "",
 
+  selectedSeriesSlice: null,
+  dynamicSlices: {},
+
   setUploadProgress: (value) => set({ uploadProgress: value }),
   setSelectedFileName: (name) => set({ selectedFileName: name }),
   setLoading: (value) => set({ isLoading: value }),
@@ -98,12 +107,25 @@ export const useUIStore = create<UIState>((set) => ({
 
   setSelectedModality: (m) => set({ selectedModality: m }),
   setPredictionResult: (r) => set({ predictionResult: r }),
-  setSeriesResult: (r) => set({ seriesResult: r }),
+  setSeriesResult: (r) => {
+    set({ seriesResult: r });
+    if (r && r.top_results.length > 0) {
+      set({ selectedSeriesSlice: r.top_results[0].center_slice });
+    } else {
+      set({ selectedSeriesSlice: null });
+    }
+  },
   setPredictionError: (e) => set({ predictionError: e }),
 
   setPatientName: (name) => set({ patientName: name }),
   setPatientAge: (age) => set({ patientAge: age }),
   setPatientGender: (gender) => set({ patientGender: gender }),
+
+  setSelectedSeriesSlice: (slice) => set({ selectedSeriesSlice: slice }),
+  setDynamicSlices: (updater) =>
+    set((state) => ({
+      dynamicSlices: typeof updater === "function" ? updater(state.dynamicSlices) : updater,
+    })),
 }));
 
 
